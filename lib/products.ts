@@ -43,11 +43,17 @@ export async function getProductById(id: string): Promise<{
   data: Product | null;
   error: string | null;
 }> {
+  const normalizedId = id.trim();
+
+  if (!normalizedId) {
+    return { data: null, error: null };
+  }
+
   const { data, error } = await supabase
     .from("products")
     .select("id, title, description, price, subject, grade")
-    .eq("id", id)
-    .single();
+    .eq("id", normalizedId)
+    .maybeSingle();
 
   return {
     data: (data as Product | null) ?? null,

@@ -9,10 +9,6 @@ export default async function ProductPage({ params }: ProductPageProps) {
   const { id } = await params;
   const { data: product, error } = await getProductById(id);
 
-  if (!product && !error) {
-    notFound();
-  }
-
   if (error) {
     return (
       <section>
