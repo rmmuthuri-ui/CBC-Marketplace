@@ -1,6 +1,6 @@
 /**
  * Canonical subject labels for navigation and Supabase `products.subject` filtering.
- * Category URLs use encodeURIComponent(subject).
+ * Subject pages use slug routes like /subjects/mathematics.
  */
 export const MARKETPLACE_SUBJECTS = [
   "Mathematics",
@@ -14,3 +14,19 @@ export const MARKETPLACE_SUBJECTS = [
 ] as const;
 
 export type MarketplaceSubject = (typeof MARKETPLACE_SUBJECTS)[number];
+
+export function subjectToSlug(subject: string): string {
+  return subject
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+export function subjectFromSlug(slug: string): string | null {
+  const normalized = slug.trim().toLowerCase();
+  const subject = MARKETPLACE_SUBJECTS.find(
+    (item) => subjectToSlug(item) === normalized,
+  );
+  return subject ?? null;
+}

@@ -1,7 +1,5 @@
 import Link from "next/link";
-import { ProductCard } from "@/components/ProductCard";
-import { getAllProducts } from "@/lib/products";
-import { MARKETPLACE_SUBJECTS } from "@/lib/subjects";
+import { MARKETPLACE_SUBJECTS, subjectToSlug } from "@/lib/subjects";
 
 const whyPoints = [
   {
@@ -22,9 +20,7 @@ const whyPoints = [
   },
 ] as const;
 
-export default async function Home() {
-  const { data: products, error } = await getAllProducts();
-
+export default function Home() {
   return (
     <div className="space-y-10 pb-12">
       {/* Hero */}
@@ -100,7 +96,7 @@ export default async function Home() {
           {MARKETPLACE_SUBJECTS.map((subject) => (
             <Link
               key={subject}
-              href={`/category/${encodeURIComponent(subject)}`}
+              href={`/subjects/${subjectToSlug(subject)}`}
               className="rounded-xl border border-slate-200 bg-white px-4 py-4 text-center text-sm font-semibold text-slate-700 shadow-sm transition hover:border-green-400 hover:bg-green-50/50 hover:text-green-800"
             >
               {subject}
@@ -109,26 +105,21 @@ export default async function Home() {
         </div>
       </section>
 
-      {/* Products */}
-      <section className="space-y-4">
-        <h2 className="text-2xl font-semibold text-slate-900">All products</h2>
-        {error ? (
-          <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            Failed to load products: {error}
+      {/* Contact / feedback */}
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm sm:p-8">
+        <h2 className="text-2xl font-bold text-slate-900 sm:text-3xl">Contact Us</h2>
+        <p className="mt-3 text-sm leading-relaxed text-slate-600 sm:text-base">
+          Have feedback, partnership ideas, or support questions? Reach out and we will be happy
+          to help.
+        </p>
+        <div className="mt-5 space-y-2 text-sm sm:text-base">
+          <p className="font-medium text-slate-700">
+            Email: <span className="text-blue-700">cbcmarketplaceke@gmail.com</span>
           </p>
-        ) : null}
-        {!error && (!products || products.length === 0) ? (
-          <p className="rounded-lg border border-slate-200 bg-white px-4 py-8 text-center text-slate-600">
-            No products found in the marketplace yet.
+          <p className="font-medium text-slate-700">
+            Phone/WhatsApp: <span className="text-green-700">+254111440712</span>
           </p>
-        ) : null}
-        {!error && products && products.length > 0 ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {products.map((product) => (
-              <ProductCard key={product.id} product={product} />
-            ))}
-          </div>
-        ) : null}
+        </div>
       </section>
     </div>
   );
