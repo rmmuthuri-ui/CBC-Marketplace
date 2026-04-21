@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { MpesaPaymentForm } from "@/components/MpesaPaymentForm";
 import { getProductById } from "@/lib/products";
 
 type ProductPageProps = {
@@ -43,12 +44,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
         </div>
       </div>
 
-      <button
-        type="button"
-        className="mt-8 rounded-md bg-green-600 px-5 py-3 text-sm font-semibold text-white hover:bg-green-700"
-      >
-        Buy
-      </button>
+      <MpesaPaymentForm defaultAmount={product.price} />
     </article>
   );
 }
