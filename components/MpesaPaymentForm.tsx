@@ -12,6 +12,18 @@ type ApiResponse = {
   ResponseDescription?: string;
 };
 
+function parseJsonSafe(raw: string): ApiResponse | null {
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(raw) as ApiResponse;
+  } catch {
+    return null;
+  }
+}
+
 export function MpesaPaymentForm({ defaultAmount = 1 }: MpesaPaymentFormProps) {
   const [phone, setPhone] = useState("");
   const [amount, setAmount] = useState(String(defaultAmount));
@@ -37,18 +49,19 @@ export function MpesaPaymentForm({ defaultAmount = 1 }: MpesaPaymentFormProps) {
         }),
       });
 
-      const data = (await response.json()) as ApiResponse;
+      const raw = await response.text();
+      const data = parseJsonSafe(raw);
 
       if (!response.ok) {
         setIsError(true);
-        setMessage(data.error ?? "Payment request failed.");
+        setMessage(data?.error ?? "Payment request failed.");
         return;
       }
 
       setIsError(false);
       setMessage(
-        data.CustomerMessage ??
-          data.ResponseDescription ??
+        data?.CustomerMessage ??
+          data?.ResponseDescription ??
           "STK push sent successfully. Check your phone to complete payment.",
       );
     } catch {

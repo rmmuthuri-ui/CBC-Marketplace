@@ -9,11 +9,29 @@ type StkPushPayload = {
 };
 
 function getRequiredEnv(name: string): string {
-  const value = process.env[name];
+  const value = process.env[name]?.trim();
   if (!value) {
     throw new Error(`Missing required environment variable: ${name}`);
   }
   return value;
+}
+
+async function parseJsonSafe<T>(response: Response): Promise<T | null> {
+  const raw = await response.text();
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
+function getMpesaBaseUrl(): string {
+  const raw = process.env.MPESA_BASE_URL?.trim() || "https://api.safaricom.co.ke";
+  return raw.replace(/\/+$/, "");
 }
 
 export async function POST(request: Request) {
@@ -32,6 +50,7 @@ export async function POST(request: Request) {
     const shortcode = getRequiredEnv("MPESA_SHORTCODE");
     const passkey = getRequiredEnv("MPESA_PASSKEY");
     const callbackUrl = getRequiredEnv("MPESA_CALLBACK_URL");
+    const mpesaBaseUrl = getMpesaBaseUrl();
 
     const phoneNumber = formatPhoneNumber(phone);
     const timestamp = getTimestamp();
@@ -40,24 +59,40 @@ export async function POST(request: Request) {
     const auth = Buffer.from(`${consumerKey}:${consumerSecret}`).toString("base64");
 
     const tokenResponse = await fetch(
-      "https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials",
+      `${mpesaBaseUrl}/oauth/v1/generate?grant_type=client_credentials`,
       {
-        method: "POST",
+        method: "GET",
         headers: {
           Authorization: `Basic ${auth}`,
+          Accept: "application/json",
         },
         cache: "no-store",
       },
     );
 
-    const tokenData = (await tokenResponse.json()) as {
-      access_token?: string;
-      errorMessage?: string;
-    };
+    const tokenRaw = await tokenResponse.text();
+    const tokenData = (() => {
+      if (!tokenRaw) {
+        return null;
+      }
+      try {
+        return JSON.parse(tokenRaw) as {
+          access_token?: string;
+          errorMessage?: string;
+        };
+      } catch {
+        return null;
+      }
+    })();
 
-    if (!tokenResponse.ok || !tokenData.access_token) {
+    if (!tokenResponse.ok || !tokenData?.access_token) {
       return NextResponse.json(
-        { error: tokenData.errorMessage ?? "Failed to get M-PESA access token." },
+        {
+          error: tokenData?.errorMessage ?? "Failed to get M-PESA access token.",
+          status: tokenResponse.status,
+          details: tokenRaw || "Empty token response from M-PESA.",
+          hint: "If you are using test credentials, set MPESA_BASE_URL to https://sandbox.safaricom.co.ke",
+        },
         { status: 502 },
       );
     }
@@ -76,26 +111,25 @@ export async function POST(request: Request) {
       TransactionDesc: "Payment for CBC resources",
     };
 
-    const stkResponse = await fetch(
-      "https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${tokenData.access_token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(stkBody),
-        cache: "no-store",
+    const stkResponse = await fetch(`${mpesaBaseUrl}/mpesa/stkpush/v1/processrequest`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${tokenData.access_token}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
       },
-    );
+      body: JSON.stringify(stkBody),
+      cache: "no-store",
+    });
 
-    const stkData = (await stkResponse.json()) as Record<string, unknown>;
+    const stkData = await parseJsonSafe<Record<string, unknown>>(stkResponse);
 
-    if (!stkResponse.ok) {
+    if (!stkResponse.ok || !stkData) {
       return NextResponse.json(
         {
           error: "Failed to initiate STK push.",
-          details: stkData,
+          details: stkData ?? "Empty/invalid STK response from M-PESA.",
+          status: stkResponse.status,
         },
         { status: 502 },
       );
