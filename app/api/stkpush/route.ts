@@ -110,6 +110,11 @@ export async function POST(request: Request) {
 
     const timestamp = getTimestamp();
     const password = generatePassword(shortcode, passkey, timestamp);
+    console.log("STK credential material:", {
+      formattedPhone: phoneNumber,
+      timestamp,
+      password,
+    });
 
     const auth = Buffer.from(`${consumerKey}:${consumerSecret}`).toString("base64");
 
@@ -157,6 +162,30 @@ export async function POST(request: Request) {
       AccountReference: normalizedResourceId,
       TransactionDesc: "Payment for CBC resources",
     };
+    const payloadFields = Object.keys(stkBody);
+    const expectedPayloadFields = [
+      "BusinessShortCode",
+      "Password",
+      "Timestamp",
+      "TransactionType",
+      "Amount",
+      "PartyA",
+      "PartyB",
+      "PhoneNumber",
+      "CallBackURL",
+      "AccountReference",
+      "TransactionDesc",
+    ];
+    const extraPayloadFields = payloadFields.filter((field) => !expectedPayloadFields.includes(field));
+    console.log("STK request integrity checks:", {
+      timestampUsedForPassword: timestamp,
+      timestampUsedInPayload: stkBody.Timestamp,
+      isSameTimestamp: stkBody.Timestamp === timestamp,
+      authorizationHeaderPreview: `Bearer ${tokenData.access_token}`.slice(0, 14) + "...",
+      hasBearerPrefix: `Bearer ${tokenData.access_token}`.startsWith("Bearer "),
+      payloadFields,
+      extraPayloadFields,
+    });
     console.log("Safaricom STK request payload:", stkBody);
 
     const stkResponse = await fetch(MPESA_STK_PUSH_URL, {
