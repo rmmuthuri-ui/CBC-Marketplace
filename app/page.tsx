@@ -112,12 +112,9 @@ export default function Home() {
           Have feedback, partnership ideas, or support questions? Reach out and we will be happy
           to help.
         </p>
-        <div className="mt-5 space-y-2 text-sm sm:text-base">
+        <div className="mt-5 text-sm sm:text-base">
           <p className="font-medium text-slate-700">
-            Email: <span className="text-blue-700">cbcmarketplaceke@gmail.com</span>
-          </p>
-          <p className="font-medium text-slate-700">
-            Phone/WhatsApp: <span className="text-green-700">+254111440712</span>
+            Contact us via email: <span className="text-blue-700">cbcmarketplaceke@gmail.com</span>
           </p>
         </div>
       </section>
