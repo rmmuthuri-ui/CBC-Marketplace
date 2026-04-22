@@ -21,12 +21,20 @@ export function ProductCard({ product }: ProductCardProps) {
 
       <div className="mt-5 flex items-center justify-between">
         <span className="text-sm font-medium text-slate-700">Grade: {product.grade}</span>
-        <Link
-          href={`/product/${product.id}`}
-          className="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-        >
-          View
-        </Link>
+        <div className="flex gap-2">
+          <Link
+            href={`/product/${product.id}`}
+            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            View
+          </Link>
+          <Link
+            href={`/product/${product.id}`}
+            className="rounded-md bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700"
+          >
+            Buy
+          </Link>
+        </div>
       </div>
     </article>
   );
