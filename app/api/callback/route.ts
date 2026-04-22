@@ -30,8 +30,13 @@ function getCallbackItem(items: CallbackItem[] | undefined, key: string): string
 }
 
 export async function POST(request: Request) {
+  console.log("🔥 MPESA CALLBACK HIT");
   const body = (await request.json()) as StkCallbackBody;
-  console.log("M-PESA callback payload:", JSON.stringify(body, null, 2));
+  try {
+    console.log("M-PESA callback payload:", JSON.stringify(body, null, 2));
+  } catch {
+    console.log("M-PESA callback payload: [unserializable payload]");
+  }
 
   const callback = body.Body?.stkCallback;
 
