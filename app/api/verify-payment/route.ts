@@ -36,21 +36,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ paid: false });
     }
 
-    const productFile = await supabaseAdmin
+    const resourceRecord = await supabaseAdmin
       .from("products")
-      .select("file")
+      .select("file_url")
       .eq("id", normalizedResourceId)
       .maybeSingle();
 
-    if (productFile.error || !productFile.data?.file) {
+    if (resourceRecord.error || !resourceRecord.data?.file_url) {
       return NextResponse.json({ paid: false });
     }
 
-    const filePath = productFile.data.file;
+    const resourcePath = resourceRecord.data.file_url;
     const signed = await supabaseAdmin
       .storage
       .from("Resources")
-      .createSignedUrl(filePath, 60);
+      .createSignedUrl(resourcePath, 60);
 
     if (signed.error || !signed.data?.signedUrl) {
       console.error("Failed to generate signed URL:", signed.error?.message ?? "unknown");

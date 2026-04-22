@@ -5,7 +5,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 type MpesaPaymentFormProps = {
   defaultAmount?: number;
   resourceId: string;
-  resourceFile: string;
+  resourceFileUrl: string;
 };
 
 type ApiResponse = {
@@ -34,7 +34,7 @@ function parseJsonSafe<T>(raw: string): T | null {
 export function MpesaPaymentForm({
   defaultAmount = 1,
   resourceId,
-  resourceFile,
+  resourceFileUrl,
 }: MpesaPaymentFormProps) {
   const [phone, setPhone] = useState("");
   const [amount, setAmount] = useState(String(defaultAmount));
@@ -196,7 +196,7 @@ export function MpesaPaymentForm({
           <button
             type="button"
             onClick={() =>
-              window.open(downloadUrl || `/resources/${encodeURIComponent(resourceFile)}`, "_blank")
+              window.open(downloadUrl || `/resources/${encodeURIComponent(resourceFileUrl)}`, "_blank")
             }
             className="rounded-md bg-blue-600 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700"
           >
