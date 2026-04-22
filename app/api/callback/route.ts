@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { normalizePhone } from "@/lib/mpesa";
-import { supabase } from "@/lib/supabase";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
 
@@ -31,7 +31,22 @@ function getCallbackItem(items: CallbackItem[] | undefined, key: string): string
 
 export async function POST(request: Request) {
   console.log("🔥 CALLBACK HIT");
-  const body = (await request.json()) as StkCallbackBody;
+  const expectedToken = process.env.MPESA_CALLBACK_TOKEN?.trim();
+  if (expectedToken) {
+    const callbackToken = new URL(request.url).searchParams.get("token")?.trim() ?? "";
+    if (callbackToken !== expectedToken) {
+      return NextResponse.json({ ResultCode: 1, ResultDesc: "Unauthorized callback" }, { status: 401 });
+    }
+  }
+
+  const body = (await request.json().catch(() => null)) as StkCallbackBody | null;
+  if (!body) {
+    return NextResponse.json({
+      ResultCode: 0,
+      ResultDesc: "Accepted",
+    });
+  }
+
   try {
     console.log("M-PESA callback payload:", JSON.stringify(body, null, 2));
   } catch {
@@ -42,6 +57,7 @@ export async function POST(request: Request) {
   const items = callback?.CallbackMetadata?.Item;
   const rawPhone = getCallbackItem(items, "PhoneNumber");
   const amount = getCallbackItem(items, "Amount");
+  const receiptNumber = getCallbackItem(items, "MpesaReceiptNumber");
   const resultCode = callback?.ResultCode ?? null;
   const checkoutRequestID = callback?.CheckoutRequestID ?? null;
 
@@ -49,14 +65,43 @@ export async function POST(request: Request) {
     checkoutRequestID,
     phoneNumber: rawPhone,
     amount,
+    receiptNumber,
     resultCode,
   });
 
-  if (resultCode === 0) {
+  if (checkoutRequestID) {
+    await supabaseAdmin
+      .from("payment_intents")
+      .update({
+        status: resultCode === 0 ? "paid" : "failed",
+        paid_at: resultCode === 0 ? new Date().toISOString() : null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("checkout_request_id", checkoutRequestID);
+  }
+
+  if (resultCode === 0 && checkoutRequestID) {
     try {
-      const phone = rawPhone ? normalizePhone(rawPhone) : "unknown";
-      const resourceId = checkoutRequestID?.trim();
-      const parsedAmount = Number(amount);
+      const intentResult = await supabaseAdmin
+        .from("payment_intents")
+        .select("resource_id, phone, amount")
+        .eq("checkout_request_id", checkoutRequestID)
+        .maybeSingle();
+
+      if (intentResult.error || !intentResult.data?.resource_id) {
+        console.error("Unable to link callback to resource: payment intent not found.", {
+          checkoutRequestID,
+          error: intentResult.error?.message ?? null,
+        });
+        return NextResponse.json({
+          ResultCode: 0,
+          ResultDesc: "Accepted",
+        });
+      }
+
+      const phone = rawPhone ? normalizePhone(rawPhone) : intentResult.data.phone;
+      const resourceId = intentResult.data.resource_id.trim();
+      const parsedAmount = Number(amount ?? intentResult.data.amount);
       const numericAmount = Number.isNaN(parsedAmount) ? 0 : parsedAmount;
 
       if (!resourceId) {
@@ -79,6 +124,8 @@ export async function POST(request: Request) {
         amount: numericAmount,
         resource_id: resourceId,
         status: "paid",
+        checkout_request_id: checkoutRequestID,
+        mpesa_receipt: receiptNumber,
       };
 
       console.log("Payment insert payload:", {
@@ -88,7 +135,9 @@ export async function POST(request: Request) {
         status: paymentPayload.status,
       });
 
-      const insertResult = await supabase.from("payments").insert(paymentPayload);
+      const insertResult = await supabaseAdmin
+        .from("payments")
+        .upsert(paymentPayload, { onConflict: "checkout_request_id" });
 
       if (insertResult.error) {
         console.error("Failed to insert paid payment:", insertResult.error.message);

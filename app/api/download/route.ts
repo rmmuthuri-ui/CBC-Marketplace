@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { normalizePhone } from "@/lib/mpesa";
-import { supabase } from "@/lib/supabase";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
@@ -11,7 +10,12 @@ type DownloadPayload = {
 };
 
 export async function POST(request: Request) {
-  const { phone, resourceId } = (await request.json()) as DownloadPayload;
+  const payload = (await request.json().catch(() => null)) as DownloadPayload | null;
+  if (!payload) {
+    return NextResponse.json({ error: "Invalid JSON payload." }, { status: 400 });
+  }
+
+  const { phone, resourceId } = payload;
 
   if (!phone || !resourceId?.trim()) {
     return NextResponse.json({ error: "Phone and resourceId are required." }, { status: 400 });
@@ -21,7 +25,7 @@ export async function POST(request: Request) {
     const normalizedPhone = normalizePhone(phone);
     const normalizedResourceId = resourceId.trim();
 
-    const payment = await supabase
+    const payment = await supabaseAdmin
       .from("payments")
       .select("id")
       .eq("phone", normalizedPhone)
@@ -30,6 +34,10 @@ export async function POST(request: Request) {
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
+
+    if (payment.error) {
+      return NextResponse.json({ error: "Failed to verify payment." }, { status: 500 });
+    }
 
     if (!payment.data?.id) {
       return NextResponse.json({ error: "Not paid" }, { status: 403 });
@@ -45,8 +53,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Resource file not found." }, { status: 404 });
     }
 
-    const signed = await supabaseAdmin
-      .storage
+    const signed = await supabaseAdmin.storage
       .from("Resources")
       .createSignedUrl(resourceRecord.data.file_url, 60);
 

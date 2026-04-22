@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { generatePassword, getTimestamp, normalizePhone } from "@/lib/mpesa";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
 
 type StkPushPayload = {
   phone: string;
-  amount: number;
   resourceId: string;
 };
 
@@ -35,14 +35,18 @@ function parseJsonSafe<T>(raw: string): T | null {
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as StkPushPayload;
+    const body = (await request.json().catch(() => null)) as StkPushPayload | null;
+    if (!body) {
+      return NextResponse.json({ error: "Invalid JSON payload." }, { status: 400 });
+    }
+
     console.log("STK PUSH incoming request body:", body);
 
-    const { phone, amount, resourceId } = body;
+    const { phone, resourceId } = body;
 
-    if (!phone || !amount || Number(amount) <= 0 || !resourceId?.trim()) {
+    if (!phone || !resourceId?.trim()) {
       return NextResponse.json(
-        { error: "Phone number, resource ID, and a valid amount are required." },
+        { error: "Phone number and resource ID are required." },
         { status: 400 },
       );
     }
@@ -63,10 +67,28 @@ export async function POST(request: Request) {
     });
 
     const phoneNumber = normalizePhone(phone);
+    const normalizedResourceId = resourceId.trim();
+    const productResult = await supabaseAdmin
+      .from("products")
+      .select("id, price")
+      .eq("id", normalizedResourceId)
+      .maybeSingle();
+
+    if (productResult.error || !productResult.data?.id) {
+      return NextResponse.json({ error: "Resource not found." }, { status: 404 });
+    }
+
+    const parsedProductAmount = Number(productResult.data.price);
+    if (!Number.isFinite(parsedProductAmount) || parsedProductAmount <= 0) {
+      return NextResponse.json({ error: "Resource price is invalid." }, { status: 400 });
+    }
+
+    const amount = Math.round(parsedProductAmount);
+
     console.log("STK normalized fields:", {
       phoneNumber,
-      amount: Number(amount),
-      resourceId: resourceId.trim(),
+      amount,
+      resourceId: normalizedResourceId,
     });
 
     const timestamp = getTimestamp();
@@ -119,7 +141,7 @@ export async function POST(request: Request) {
       PartyB: shortcode,
       PhoneNumber: phoneNumber,
       CallBackURL: callbackUrl,
-      AccountReference: resourceId.trim(),
+      AccountReference: normalizedResourceId,
       TransactionDesc: "Payment for CBC resources",
     };
     console.log("Safaricom STK request payload:", stkBody);
@@ -154,7 +176,29 @@ export async function POST(request: Request) {
       );
     }
 
-        return NextResponse.json(stkData);
+    const responseCode = String(stkData.ResponseCode ?? "");
+    const checkoutRequestId =
+      typeof stkData.CheckoutRequestID === "string" ? stkData.CheckoutRequestID : null;
+
+    if (responseCode === "0" && checkoutRequestId) {
+      const intentInsert = await supabaseAdmin.from("payment_intents").upsert(
+        {
+          checkout_request_id: checkoutRequestId,
+          phone: phoneNumber,
+          resource_id: normalizedResourceId,
+          amount,
+          status: "initiated",
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "checkout_request_id" },
+      );
+
+      if (intentInsert.error) {
+        console.error("Failed to persist payment intent:", intentInsert.error.message);
+      }
+    }
+
+    return NextResponse.json(stkData);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected server error.";
     console.error("STK PUSH fatal error:", error);
