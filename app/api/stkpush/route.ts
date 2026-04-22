@@ -10,6 +10,8 @@ type StkPushPayload = {
 };
 
 const MPESA_PRODUCTION_BASE_URL = "https://api.safaricom.co.ke";
+const MPESA_OAUTH_URL = "https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials";
+const MPESA_STK_PUSH_URL = "https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest";
 
 function getRequiredEnv(name: string): string {
   const value = process.env[name]?.trim();
@@ -111,17 +113,14 @@ export async function POST(request: Request) {
 
     const auth = Buffer.from(`${consumerKey}:${consumerSecret}`).toString("base64");
 
-    const tokenResponse = await fetch(
-      `${mpesaBaseUrl}/oauth/v1/generate?grant_type=client_credentials`,
-      {
-        method: "GET",
-        headers: {
-          Authorization: `Basic ${auth}`,
-          Accept: "application/json",
-        },
-        cache: "no-store",
+    const tokenResponse = await fetch(MPESA_OAUTH_URL, {
+      method: "GET",
+      headers: {
+        Authorization: `Basic ${auth}`,
+        Accept: "application/json",
       },
-    );
+      cache: "no-store",
+    });
 
     const tokenRaw = await tokenResponse.text();
     const tokenData = parseJsonSafe<{
@@ -160,7 +159,7 @@ export async function POST(request: Request) {
     };
     console.log("Safaricom STK request payload:", stkBody);
 
-    const stkResponse = await fetch(`${mpesaBaseUrl}/mpesa/stkpush/v1/processrequest`, {
+    const stkResponse = await fetch(MPESA_STK_PUSH_URL, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${tokenData.access_token}`,
