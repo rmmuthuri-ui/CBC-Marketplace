@@ -9,17 +9,14 @@ type StkPushPayload = {
   resourceId: string;
 };
 
+const MPESA_PRODUCTION_BASE_URL = "https://api.safaricom.co.ke";
+
 function getRequiredEnv(name: string): string {
   const value = process.env[name]?.trim();
   if (!value) {
     throw new Error(`Missing required environment variable: ${name}`);
   }
   return value;
-}
-
-function getMpesaBaseUrl(): string {
-  const raw = process.env.MPESA_BASE_URL?.trim() || "https://api.safaricom.co.ke";
-  return raw.replace(/\/+$/, "");
 }
 
 function parseJsonSafe<T>(raw: string): T | null {
@@ -64,7 +61,12 @@ export async function POST(request: Request) {
     const shortcode = getRequiredEnv("MPESA_SHORTCODE");
     const passkey = getRequiredEnv("MPESA_PASSKEY");
     const callbackUrl = getRequiredEnv("MPESA_CALLBACK_URL");
-    const mpesaBaseUrl = getMpesaBaseUrl();
+    const configuredBaseUrl = process.env.MPESA_BASE_URL?.trim();
+    if (configuredBaseUrl && configuredBaseUrl !== MPESA_PRODUCTION_BASE_URL) {
+      console.warn("Ignoring non-production MPESA_BASE_URL. Using production Safaricom URL.");
+    }
+
+    const mpesaBaseUrl = MPESA_PRODUCTION_BASE_URL;
     console.log("M-PESA env validation:", {
       hasConsumerKey: Boolean(consumerKey),
       hasConsumerSecret: Boolean(consumerSecret),
@@ -76,6 +78,11 @@ export async function POST(request: Request) {
 
     const phoneNumber = normalizePhone(phone);
     const normalizedResourceId = resourceId.trim();
+    console.log("Formatted phone for STK:", {
+      inputPhone: phone,
+      formattedPhone: phoneNumber,
+    });
+
     const productResult = await supabaseAdmin
       .from("products")
       .select("id, price")
@@ -133,7 +140,6 @@ export async function POST(request: Request) {
           error: tokenData?.errorMessage ?? "Failed to get M-PESA access token.",
           status: tokenResponse.status,
           details: tokenRaw || "Empty token response from M-PESA.",
-          hint: "If you are using test credentials, set MPESA_BASE_URL to https://sandbox.safaricom.co.ke",
         },
         { status: 502 },
       );
@@ -143,7 +149,7 @@ export async function POST(request: Request) {
       BusinessShortCode: shortcode,
       Password: password,
       Timestamp: timestamp,
-      TransactionType: "CustomerPayBillOnline",
+      TransactionType: "CustomerBuyGoodsOnline",
       Amount: Number(amount),
       PartyA: phoneNumber,
       PartyB: shortcode,
