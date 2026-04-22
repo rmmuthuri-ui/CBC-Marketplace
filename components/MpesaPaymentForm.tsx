@@ -5,7 +5,6 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 type MpesaPaymentFormProps = {
   defaultAmount?: number;
   resourceId: string;
-  resourceFileUrl: string;
 };
 
 type ApiResponse = {
@@ -16,7 +15,6 @@ type ApiResponse = {
 
 type VerifyResponse = {
   paid: boolean;
-  url?: string;
 };
 
 function parseJsonSafe<T>(raw: string): T | null {
@@ -34,14 +32,12 @@ function parseJsonSafe<T>(raw: string): T | null {
 export function MpesaPaymentForm({
   defaultAmount = 1,
   resourceId,
-  resourceFileUrl,
 }: MpesaPaymentFormProps) {
   const [phone, setPhone] = useState("");
   const [amount, setAmount] = useState(String(defaultAmount));
   const [isLoading, setIsLoading] = useState(false);
   const [isWaitingForConfirmation, setIsWaitingForConfirmation] = useState(false);
   const [isPaid, setIsPaid] = useState(false);
-  const [downloadUrl, setDownloadUrl] = useState("");
   const [message, setMessage] = useState("");
   const [isError, setIsError] = useState(false);
   const pollTimer = useRef<number | null>(null);
@@ -75,14 +71,13 @@ export function MpesaPaymentForm({
         const raw = await response.text();
         const data = parseJsonSafe<VerifyResponse>(raw);
 
-        if (data?.paid && data.url) {
+        if (data?.paid) {
           if (pollTimer.current) {
             window.clearInterval(pollTimer.current);
             pollTimer.current = null;
           }
 
           setIsPaid(true);
-          setDownloadUrl(data.url);
           setIsWaitingForConfirmation(false);
           setMessage("Payment confirmed. Download is ready.");
           setIsError(false);
@@ -130,6 +125,36 @@ export function MpesaPaymentForm({
       setMessage("Could not connect to payment service. Please try again.");
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  async function handleDownload() {
+    try {
+      const response = await fetch("/api/download", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          phone,
+          resourceId,
+        }),
+      });
+
+      const raw = await response.text();
+      const data = parseJsonSafe<{ url?: string; error?: string }>(raw);
+
+      if (!response.ok || !data?.url) {
+        setIsError(true);
+        setMessage(data?.error ?? "Unable to generate download link.");
+        return;
+      }
+
+      setIsError(false);
+      window.open(data.url, "_blank");
+    } catch {
+      setIsError(true);
+      setMessage("Download failed. Please try again.");
     }
   }
 
@@ -195,9 +220,7 @@ export function MpesaPaymentForm({
         ) : (
           <button
             type="button"
-            onClick={() =>
-              window.open(downloadUrl || `/resources/${encodeURIComponent(resourceFileUrl)}`, "_blank")
-            }
+            onClick={handleDownload}
             className="rounded-md bg-blue-600 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700"
           >
             Download Resource

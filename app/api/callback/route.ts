@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { normalizePhone } from "@/lib/mpesa";
 import { supabase } from "@/lib/supabase";
 
 export const runtime = "nodejs";
@@ -53,25 +54,57 @@ export async function POST(request: Request) {
 
   if (resultCode === 0) {
     try {
-      const phone = rawPhone ?? "unknown";
-      const resourceId = getCallbackItem(items, "AccountReference") ?? checkoutRequestID ?? "unknown";
+      const phone = rawPhone ? normalizePhone(rawPhone) : "unknown";
+      const resourceId = checkoutRequestID?.trim();
       const parsedAmount = Number(amount);
       const numericAmount = Number.isNaN(parsedAmount) ? 0 : parsedAmount;
 
-      const insertResult = await supabase.from("payments").insert({
+      if (!resourceId) {
+        console.error(
+          "Unable to resolve resourceId: missing CheckoutRequestID in callback. Payment will not be linked to a resource.",
+          {
+            phone,
+            amount: numericAmount,
+            resultCode,
+          },
+        );
+        return NextResponse.json({
+          ResultCode: 0,
+          ResultDesc: "Accepted",
+        });
+      }
+
+      const paymentPayload = {
         phone,
         amount: numericAmount,
         resource_id: resourceId,
         status: "paid",
+      };
+
+      console.log("Payment insert payload:", {
+        phone: paymentPayload.phone,
+        amount: paymentPayload.amount,
+        resourceId: paymentPayload.resource_id,
+        status: paymentPayload.status,
       });
+
+      const insertResult = await supabase.from("payments").insert(paymentPayload);
 
       if (insertResult.error) {
         console.error("Failed to insert paid payment:", insertResult.error.message);
+        console.log("Supabase insert response:", {
+          success: false,
+          error: insertResult.error,
+        });
       } else {
         console.log("Payment confirmed from callback:", {
           phone,
           amount,
           resourceId,
+        });
+        console.log("Supabase insert response:", {
+          success: true,
+          data: insertResult.data ?? null,
         });
       }
     } catch {
