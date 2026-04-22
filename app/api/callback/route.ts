@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { normalizePhone } from "@/lib/mpesa";
-import { markPaymentPaid } from "@/lib/paymentStore";
+import { supabase } from "@/lib/supabase";
 
 export const runtime = "nodejs";
 
@@ -30,7 +29,7 @@ function getCallbackItem(items: CallbackItem[] | undefined, key: string): string
 }
 
 export async function POST(request: Request) {
-  console.log("🔥 MPESA CALLBACK HIT");
+  console.log("🔥 CALLBACK HIT");
   const body = (await request.json()) as StkCallbackBody;
   try {
     console.log("M-PESA callback payload:", JSON.stringify(body, null, 2));
@@ -39,25 +38,44 @@ export async function POST(request: Request) {
   }
 
   const callback = body.Body?.stkCallback;
+  const items = callback?.CallbackMetadata?.Item;
+  const rawPhone = getCallbackItem(items, "PhoneNumber");
+  const amount = getCallbackItem(items, "Amount");
+  const resultCode = callback?.ResultCode ?? null;
+  const checkoutRequestID = callback?.CheckoutRequestID ?? null;
 
-  if (callback?.ResultCode === 0) {
-    const items = callback.CallbackMetadata?.Item;
-    const rawPhone = getCallbackItem(items, "PhoneNumber");
-    const amount = getCallbackItem(items, "Amount");
-    const resourceId = getCallbackItem(items, "AccountReference");
+  console.log("Callback parsed values:", {
+    checkoutRequestID,
+    phoneNumber: rawPhone,
+    amount,
+    resultCode,
+  });
 
-    if (rawPhone && resourceId) {
-      try {
-        const phone = normalizePhone(rawPhone);
-        markPaymentPaid(phone, resourceId);
+  if (resultCode === 0) {
+    try {
+      const phone = rawPhone ?? "unknown";
+      const resourceId = getCallbackItem(items, "AccountReference") ?? checkoutRequestID ?? "unknown";
+      const parsedAmount = Number(amount);
+      const numericAmount = Number.isNaN(parsedAmount) ? 0 : parsedAmount;
+
+      const insertResult = await supabase.from("payments").insert({
+        phone,
+        amount: numericAmount,
+        resource_id: resourceId,
+        status: "paid",
+      });
+
+      if (insertResult.error) {
+        console.error("Failed to insert paid payment:", insertResult.error.message);
+      } else {
         console.log("Payment confirmed from callback:", {
           phone,
           amount,
           resourceId,
         });
-      } catch {
-        // Ignore malformed callback metadata and still acknowledge callback.
       }
+    } catch {
+      // Ignore malformed callback metadata and still acknowledge callback.
     }
   }
 
