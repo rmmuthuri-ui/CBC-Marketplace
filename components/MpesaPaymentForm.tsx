@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 
 type MpesaPaymentFormProps = {
   defaultAmount?: number;
@@ -12,6 +12,11 @@ type ApiResponse = {
   error?: string;
   CustomerMessage?: string;
   ResponseDescription?: string;
+};
+
+type VerifyResponse = {
+  paid: boolean;
+  url?: string;
 };
 
 function parseJsonSafe<T>(raw: string): T | null {
@@ -31,26 +36,61 @@ export function MpesaPaymentForm({
   resourceId,
   resourceFile,
 }: MpesaPaymentFormProps) {
-  const storageKey = `paid_resource_${resourceId}`;
   const [phone, setPhone] = useState("");
   const [amount, setAmount] = useState(String(defaultAmount));
   const [isLoading, setIsLoading] = useState(false);
+  const [isWaitingForConfirmation, setIsWaitingForConfirmation] = useState(false);
   const [isPaid, setIsPaid] = useState(false);
+  const [downloadUrl, setDownloadUrl] = useState("");
   const [message, setMessage] = useState("");
   const [isError, setIsError] = useState(false);
+  const pollTimer = useRef<number | null>(null);
 
   useEffect(() => {
-    const saved = window.localStorage.getItem(storageKey);
-    if (saved === "true") {
-      setIsPaid(true);
-    }
-  }, [storageKey]);
+    return () => {
+      if (pollTimer.current) {
+        window.clearInterval(pollTimer.current);
+      }
+    };
+  }, []);
 
-  function markAsPaidLocally() {
-    setIsPaid(true);
-    window.localStorage.setItem(storageKey, "true");
-    setIsError(false);
-    setMessage("Payment request sent successfully. Download is now unlocked.");
+  function startVerificationPolling(phoneNumber: string) {
+    if (pollTimer.current) {
+      window.clearInterval(pollTimer.current);
+    }
+
+    pollTimer.current = window.setInterval(async () => {
+      try {
+        const response = await fetch("/api/verify-payment", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            phone: phoneNumber,
+            resourceId,
+          }),
+        });
+
+        const raw = await response.text();
+        const data = parseJsonSafe<VerifyResponse>(raw);
+
+        if (data?.paid && data.url) {
+          if (pollTimer.current) {
+            window.clearInterval(pollTimer.current);
+            pollTimer.current = null;
+          }
+
+          setIsPaid(true);
+          setDownloadUrl(data.url);
+          setIsWaitingForConfirmation(false);
+          setMessage("Payment confirmed. Download is ready.");
+          setIsError(false);
+        }
+      } catch {
+        // keep polling
+      }
+    }, 3000);
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -81,14 +121,10 @@ export function MpesaPaymentForm({
         return;
       }
 
+      setIsWaitingForConfirmation(true);
       setIsError(false);
-      setMessage(
-        data?.CustomerMessage ??
-          data?.ResponseDescription ??
-          "STK push sent successfully. Check your phone to complete payment.",
-      );
-      // Temporary mode: unlock immediately after successful STK request.
-      markAsPaidLocally();
+      setMessage("Complete payment on your phone.");
+      startVerificationPolling(phone);
     } catch {
       setIsError(true);
       setMessage("Could not connect to payment service. Please try again.");
@@ -101,7 +137,11 @@ export function MpesaPaymentForm({
     <form onSubmit={handleSubmit} className="mt-8 space-y-4 rounded-xl border border-slate-200 p-5">
       <h2 className="text-lg font-semibold text-slate-900">Pay with M-PESA</h2>
       <p className="text-sm text-slate-600">
-        {isPaid ? "After payment: Download" : isLoading ? "Processing payment..." : "Before payment: View + Buy"}
+        {isPaid
+          ? "After payment: Download"
+          : isWaitingForConfirmation
+            ? "Waiting for confirmation..."
+            : "Before payment: View + Buy"}
       </p>
 
       <div className="space-y-1">
@@ -115,7 +155,7 @@ export function MpesaPaymentForm({
           value={phone}
           onChange={(event) => setPhone(event.target.value)}
           className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-green-500 focus:ring"
-          disabled={isPaid || isLoading}
+          disabled={isPaid || isLoading || isWaitingForConfirmation}
           required
         />
       </div>
@@ -131,7 +171,7 @@ export function MpesaPaymentForm({
           value={amount}
           onChange={(event) => setAmount(event.target.value)}
           className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-green-500 focus:ring"
-          disabled={isPaid || isLoading}
+          disabled={isPaid || isLoading || isWaitingForConfirmation}
           required
         />
       </div>
@@ -147,7 +187,7 @@ export function MpesaPaymentForm({
         {!isPaid ? (
           <button
             type="submit"
-            disabled={isLoading}
+            disabled={isLoading || isWaitingForConfirmation}
             className="rounded-md bg-green-600 px-5 py-3 text-sm font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isLoading ? "Processing payment..." : "Buy"}
@@ -155,7 +195,9 @@ export function MpesaPaymentForm({
         ) : (
           <button
             type="button"
-            onClick={() => window.open(`/resources/${encodeURIComponent(resourceFile)}`, "_blank")}
+            onClick={() =>
+              window.open(downloadUrl || `/resources/${encodeURIComponent(resourceFile)}`, "_blank")
+            }
             className="rounded-md bg-blue-600 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700"
           >
             Download Resource

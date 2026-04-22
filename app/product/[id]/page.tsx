@@ -44,14 +44,14 @@ export default async function ProductPage({ params }: ProductPageProps) {
         </div>
         <div className="rounded-lg bg-slate-50 p-4">
           <p className="text-xs uppercase tracking-wide text-slate-500">Resource file</p>
-          <p className="mt-1 break-all text-sm font-semibold text-slate-800">{product.file}</p>
+          <p className="mt-1 break-all text-sm font-semibold text-slate-800">{product.filePath}</p>
         </div>
       </div>
 
       <MpesaPaymentForm
         defaultAmount={product.price}
         resourceId={product.id}
-        resourceFile={product.file}
+        resourceFile={product.filePath}
       />
     </article>
   );

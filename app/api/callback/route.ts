@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { normalizePhone } from "@/lib/mpesa";
-import { supabase } from "@/lib/supabase";
+import { markPaymentPaid } from "@/lib/paymentStore";
 
 export const runtime = "nodejs";
 
@@ -43,46 +43,18 @@ export async function POST(request: Request) {
   if (callback?.ResultCode === 0) {
     const items = callback.CallbackMetadata?.Item;
     const rawPhone = getCallbackItem(items, "PhoneNumber");
-    const amountString = getCallbackItem(items, "Amount");
-    let resourceId = getCallbackItem(items, "AccountReference");
+    const amount = getCallbackItem(items, "Amount");
+    const resourceId = getCallbackItem(items, "AccountReference");
 
-    if (rawPhone && amountString) {
+    if (rawPhone && resourceId) {
       try {
         const phone = normalizePhone(rawPhone);
-        const amount = Number(amountString);
-
-        if (!Number.isNaN(amount)) {
-          if (!resourceId) {
-            const pendingLookup = await supabase
-              .from("payments")
-              .select("id, resource_id")
-              .eq("phone", phone)
-              .eq("amount", amount)
-              .eq("status", "pending")
-              .order("created_at", { ascending: false })
-              .limit(1)
-              .maybeSingle();
-
-            if (!pendingLookup.error) {
-              resourceId = pendingLookup.data?.resource_id ?? null;
-            }
-          }
-
-          if (resourceId) {
-            const markPaid = await supabase.from("payments").insert({
-              phone,
-              amount,
-              resource_id: resourceId,
-              status: "paid",
-            });
-
-            if (markPaid.error) {
-              console.error("Failed to insert paid payment:", markPaid.error.message);
-            } else {
-              console.log("Payment confirmed:", { phone, amount, resourceId });
-            }
-          }
-        }
+        markPaymentPaid(phone, resourceId);
+        console.log("Payment confirmed from callback:", {
+          phone,
+          amount,
+          resourceId,
+        });
       } catch {
         // Ignore malformed callback metadata and still acknowledge callback.
       }

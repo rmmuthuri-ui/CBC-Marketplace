@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { generatePassword, getTimestamp, normalizePhone } from "@/lib/mpesa";
-import { supabase } from "@/lib/supabase";
+import { addPendingPayment } from "@/lib/paymentStore";
 
 export const runtime = "nodejs";
 
@@ -137,16 +137,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const pendingInsert = await supabase.from("payments").insert({
-      phone: phoneNumber,
-      amount: Number(amount),
-      resource_id: resourceId.trim(),
-      status: "pending",
-    });
-
-    if (pendingInsert.error) {
-      console.error("Failed to store pending payment:", pendingInsert.error.message);
-    }
+    addPendingPayment(phoneNumber, resourceId.trim());
 
     return NextResponse.json(stkData);
   } catch (error) {

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { normalizePhone } from "@/lib/mpesa";
-import { supabase } from "@/lib/supabase";
+import { getPayment } from "@/lib/paymentStore";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
 
@@ -24,35 +25,42 @@ export async function POST(request: Request) {
       resourceId: normalizedResourceId,
     });
 
-    const paymentQuery = await supabase
-      .from("payments")
-      .select("id")
-      .eq("phone", normalizedPhone)
-      .eq("resource_id", normalizedResourceId)
-      .eq("status", "paid")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    const paid = Boolean(paymentQuery.data?.id);
+    const payment = getPayment(normalizedPhone, normalizedResourceId);
+    const paid = payment?.status === "paid";
     console.log("Verify-payment query result:", {
       paid,
-      error: paymentQuery.error?.message ?? null,
+      payment: payment ?? null,
     });
 
     if (!paid) {
       return NextResponse.json({ paid: false });
     }
 
-    const productFile = await supabase
+    const productFile = await supabaseAdmin
       .from("products")
       .select("file")
       .eq("id", normalizedResourceId)
       .maybeSingle();
 
-    const file = productFile.data?.file;
-    const fileUrl = file ? `/resources/${encodeURIComponent(file)}` : null;
-    return NextResponse.json({ paid: true, fileUrl });
+    if (productFile.error || !productFile.data?.file) {
+      return NextResponse.json({ paid: false });
+    }
+
+    const filePath = productFile.data.file;
+    const signed = await supabaseAdmin
+      .storage
+      .from("Resources")
+      .createSignedUrl(filePath, 60);
+
+    if (signed.error || !signed.data?.signedUrl) {
+      console.error("Failed to generate signed URL:", signed.error?.message ?? "unknown");
+      return NextResponse.json({ paid: false });
+    }
+
+    return NextResponse.json({
+      paid: true,
+      url: signed.data.signedUrl,
+    });
   } catch {
     return NextResponse.json({ paid: false }, { status: 400 });
   }
