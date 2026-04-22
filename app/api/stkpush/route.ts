@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { generatePassword, getTimestamp, normalizePhone } from "@/lib/mpesa";
-import { addPendingPayment } from "@/lib/paymentStore";
 
 export const runtime = "nodejs";
 
@@ -18,12 +17,15 @@ function getRequiredEnv(name: string): string {
   return value;
 }
 
-async function parseJsonSafe<T>(response: Response): Promise<T | null> {
-  const raw = await response.text();
+function getMpesaBaseUrl(): string {
+  const raw = process.env.MPESA_BASE_URL?.trim() || "https://api.safaricom.co.ke";
+  return raw.replace(/\/+$/, "");
+}
+
+function parseJsonSafe<T>(raw: string): T | null {
   if (!raw) {
     return null;
   }
-
   try {
     return JSON.parse(raw) as T;
   } catch {
@@ -31,14 +33,12 @@ async function parseJsonSafe<T>(response: Response): Promise<T | null> {
   }
 }
 
-function getMpesaBaseUrl(): string {
-  const raw = process.env.MPESA_BASE_URL?.trim() || "https://api.safaricom.co.ke";
-  return raw.replace(/\/+$/, "");
-}
-
 export async function POST(request: Request) {
   try {
-    const { phone, amount, resourceId } = (await request.json()) as StkPushPayload;
+    const body = (await request.json()) as StkPushPayload;
+    console.log("STK PUSH incoming request body:", body);
+
+    const { phone, amount, resourceId } = body;
 
     if (!phone || !amount || Number(amount) <= 0 || !resourceId?.trim()) {
       return NextResponse.json(
@@ -53,8 +53,22 @@ export async function POST(request: Request) {
     const passkey = getRequiredEnv("MPESA_PASSKEY");
     const callbackUrl = getRequiredEnv("MPESA_CALLBACK_URL");
     const mpesaBaseUrl = getMpesaBaseUrl();
+    console.log("M-PESA env validation:", {
+      hasConsumerKey: Boolean(consumerKey),
+      hasConsumerSecret: Boolean(consumerSecret),
+      hasPasskey: Boolean(passkey),
+      hasShortcode: Boolean(shortcode),
+      callbackUrl,
+      mpesaBaseUrl,
+    });
 
     const phoneNumber = normalizePhone(phone);
+    console.log("STK normalized fields:", {
+      phoneNumber,
+      amount: Number(amount),
+      resourceId: resourceId.trim(),
+    });
+
     const timestamp = getTimestamp();
     const password = generatePassword(shortcode, passkey, timestamp);
 
@@ -73,19 +87,15 @@ export async function POST(request: Request) {
     );
 
     const tokenRaw = await tokenResponse.text();
-    const tokenData = (() => {
-      if (!tokenRaw) {
-        return null;
-      }
-      try {
-        return JSON.parse(tokenRaw) as {
-          access_token?: string;
-          errorMessage?: string;
-        };
-      } catch {
-        return null;
-      }
-    })();
+    const tokenData = parseJsonSafe<{
+      access_token?: string;
+      errorMessage?: string;
+    }>(tokenRaw);
+    console.log("Safaricom token response:", {
+      status: tokenResponse.status,
+      ok: tokenResponse.ok,
+      body: tokenData ?? tokenRaw ?? null,
+    });
 
     if (!tokenResponse.ok || !tokenData?.access_token) {
       return NextResponse.json(
@@ -103,15 +113,16 @@ export async function POST(request: Request) {
       BusinessShortCode: shortcode,
       Password: password,
       Timestamp: timestamp,
-      TransactionType: "CustomerBuyGoodsOnline",
+      TransactionType: "CustomerPayBillOnline",
       Amount: Number(amount),
       PartyA: phoneNumber,
-      PartyB: "5493533",
+      PartyB: shortcode,
       PhoneNumber: phoneNumber,
       CallBackURL: callbackUrl,
       AccountReference: resourceId.trim(),
       TransactionDesc: "Payment for CBC resources",
     };
+    console.log("Safaricom STK request payload:", stkBody);
 
     const stkResponse = await fetch(`${mpesaBaseUrl}/mpesa/stkpush/v1/processrequest`, {
       method: "POST",
@@ -124,7 +135,13 @@ export async function POST(request: Request) {
       cache: "no-store",
     });
 
-    const stkData = await parseJsonSafe<Record<string, unknown>>(stkResponse);
+    const stkRaw = await stkResponse.text();
+    const stkData = parseJsonSafe<Record<string, unknown>>(stkRaw);
+    console.log("Safaricom STK API response:", {
+      status: stkResponse.status,
+      ok: stkResponse.ok,
+      body: stkData ?? stkRaw ?? null,
+    });
 
     if (!stkResponse.ok || !stkData) {
       return NextResponse.json(
@@ -137,11 +154,10 @@ export async function POST(request: Request) {
       );
     }
 
-    addPendingPayment(phoneNumber, resourceId.trim());
-
-    return NextResponse.json(stkData);
+        return NextResponse.json(stkData);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected server error.";
+    console.error("STK PUSH fatal error:", error);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
