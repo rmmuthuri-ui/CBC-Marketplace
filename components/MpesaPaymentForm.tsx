@@ -16,6 +16,7 @@ type ApiResponse = {
 
 type VerifyResponse = {
   paid?: boolean;
+  fileUrl?: string | null;
 };
 
 function parseJsonSafe<T>(raw: string): T | null {
@@ -40,6 +41,7 @@ export function MpesaPaymentForm({
   const [isRequestingPayment, setIsRequestingPayment] = useState(false);
   const [isWaitingForConfirmation, setIsWaitingForConfirmation] = useState(false);
   const [isPaid, setIsPaid] = useState(false);
+  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [isError, setIsError] = useState(false);
   const pollRef = useRef<number | null>(null);
@@ -52,7 +54,7 @@ export function MpesaPaymentForm({
     };
   }, []);
 
-  async function verifyPayment(phoneValue: string): Promise<boolean> {
+  async function verifyPayment(phoneValue: string): Promise<VerifyResponse> {
     const response = await fetch("/api/verify-payment", {
       method: "POST",
       headers: {
@@ -65,8 +67,7 @@ export function MpesaPaymentForm({
     });
 
     const raw = await response.text();
-    const parsed = parseJsonSafe<VerifyResponse>(raw);
-    return Boolean(parsed?.paid);
+    return parseJsonSafe<VerifyResponse>(raw) ?? { paid: false };
   }
 
   function startPaymentPolling(phoneValue: string) {
@@ -77,13 +78,16 @@ export function MpesaPaymentForm({
     pollRef.current = window.setInterval(async () => {
       attempts += 1;
       try {
-        const paid = await verifyPayment(phoneValue);
-        if (paid) {
+        const verification = await verifyPayment(phoneValue);
+        if (verification.paid) {
           if (pollRef.current) {
             window.clearInterval(pollRef.current);
             pollRef.current = null;
           }
           setIsPaid(true);
+          setDownloadUrl(
+            verification.fileUrl ?? `/resources/${encodeURIComponent(resourceFile)}`,
+          );
           setIsWaitingForConfirmation(false);
           setIsError(false);
           setMessage("Payment confirmed. You can now download this resource.");
@@ -203,7 +207,12 @@ export function MpesaPaymentForm({
         ) : (
           <button
             type="button"
-            onClick={() => window.open(`/resources/${encodeURIComponent(resourceFile)}`, "_blank")}
+            onClick={() =>
+              window.open(
+                downloadUrl ?? `/resources/${encodeURIComponent(resourceFile)}`,
+                "_blank",
+              )
+            }
             className="rounded-md bg-blue-600 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700"
           >
             Download Resource

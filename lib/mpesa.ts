@@ -1,12 +1,8 @@
-export function formatPhoneNumber(phone: string): string {
-  const cleaned = phone.replace(/\s+/g, "");
+export function normalizePhone(phone: string): string {
+  const cleaned = phone.replace(/\s+/g, "").replace(/^\+/, "");
 
   if (/^07\d{8}$/.test(cleaned)) {
     return `254${cleaned.slice(1)}`;
-  }
-
-  if (/^\+254\d{9}$/.test(cleaned)) {
-    return cleaned.slice(1);
   }
 
   if (/^254\d{9}$/.test(cleaned)) {
@@ -15,6 +11,8 @@ export function formatPhoneNumber(phone: string): string {
 
   throw new Error("Invalid phone number format. Use 07XXXXXXXX or +254XXXXXXXXX.");
 }
+
+export const formatPhoneNumber = normalizePhone;
 
 export function getTimestamp(): string {
   const now = new Date();

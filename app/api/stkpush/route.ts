@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { formatPhoneNumber, generatePassword, getTimestamp } from "@/lib/mpesa";
-import { rememberPendingCheckout } from "@/lib/paymentStore";
+import { generatePassword, getTimestamp, normalizePhone } from "@/lib/mpesa";
+import { supabase } from "@/lib/supabase";
 
 export const runtime = "nodejs";
 
@@ -54,7 +54,7 @@ export async function POST(request: Request) {
     const callbackUrl = getRequiredEnv("MPESA_CALLBACK_URL");
     const mpesaBaseUrl = getMpesaBaseUrl();
 
-    const phoneNumber = formatPhoneNumber(phone);
+    const phoneNumber = normalizePhone(phone);
     const timestamp = getTimestamp();
     const password = generatePassword(shortcode, passkey, timestamp);
 
@@ -137,9 +137,15 @@ export async function POST(request: Request) {
       );
     }
 
-    const checkoutRequestId = String(stkData.CheckoutRequestID ?? "");
-    if (checkoutRequestId) {
-      rememberPendingCheckout(checkoutRequestId, resourceId.trim());
+    const pendingInsert = await supabase.from("payments").insert({
+      phone: phoneNumber,
+      amount: Number(amount),
+      resource_id: resourceId.trim(),
+      status: "pending",
+    });
+
+    if (pendingInsert.error) {
+      console.error("Failed to store pending payment:", pendingInsert.error.message);
     }
 
     return NextResponse.json(stkData);

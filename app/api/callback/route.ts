@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { markPaymentPaid, resolveResourceFromCheckout } from "@/lib/paymentStore";
-import { formatPhoneNumber } from "@/lib/mpesa";
+import { normalizePhone } from "@/lib/mpesa";
+import { supabase } from "@/lib/supabase";
 
 export const runtime = "nodejs";
 
@@ -39,24 +39,44 @@ export async function POST(request: Request) {
     const items = callback.CallbackMetadata?.Item;
     const rawPhone = getCallbackItem(items, "PhoneNumber");
     const amountString = getCallbackItem(items, "Amount");
-    const checkoutRequestId = callback.CheckoutRequestID ?? "";
-    const resourceId =
-      resolveResourceFromCheckout(checkoutRequestId) ??
-      getCallbackItem(items, "AccountReference");
+    let resourceId = getCallbackItem(items, "AccountReference");
 
-    if (rawPhone && amountString && resourceId) {
+    if (rawPhone && amountString) {
       try {
-        const phone = formatPhoneNumber(rawPhone);
+        const phone = normalizePhone(rawPhone);
         const amount = Number(amountString);
 
         if (!Number.isNaN(amount)) {
-          markPaymentPaid({
-            phone,
-            amount,
-            resourceId,
-            status: "paid",
-            checkoutRequestId,
-          });
+          if (!resourceId) {
+            const pendingLookup = await supabase
+              .from("payments")
+              .select("id, resource_id")
+              .eq("phone", phone)
+              .eq("amount", amount)
+              .eq("status", "pending")
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            if (!pendingLookup.error) {
+              resourceId = pendingLookup.data?.resource_id ?? null;
+            }
+          }
+
+          if (resourceId) {
+            const markPaid = await supabase.from("payments").insert({
+              phone,
+              amount,
+              resource_id: resourceId,
+              status: "paid",
+            });
+
+            if (markPaid.error) {
+              console.error("Failed to insert paid payment:", markPaid.error.message);
+            } else {
+              console.log("Payment confirmed:", { phone, amount, resourceId });
+            }
+          }
         }
       } catch {
         // Ignore malformed callback metadata and still acknowledge callback.
