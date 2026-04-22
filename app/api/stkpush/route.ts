@@ -33,6 +33,14 @@ function parseJsonSafe<T>(raw: string): T | null {
   }
 }
 
+type StkApiResponse = {
+  ResponseCode?: string;
+  ResponseDescription?: string;
+  CustomerMessage?: string;
+  CheckoutRequestID?: string;
+  errorMessage?: string;
+};
+
 export async function POST(request: Request) {
   try {
     const body = (await request.json().catch(() => null)) as StkPushPayload | null;
@@ -158,7 +166,7 @@ export async function POST(request: Request) {
     });
 
     const stkRaw = await stkResponse.text();
-    const stkData = parseJsonSafe<Record<string, unknown>>(stkRaw);
+    const stkData = parseJsonSafe<StkApiResponse>(stkRaw);
     console.log("Safaricom STK API response:", {
       status: stkResponse.status,
       ok: stkResponse.ok,
@@ -177,25 +185,37 @@ export async function POST(request: Request) {
     }
 
     const responseCode = String(stkData.ResponseCode ?? "");
-    const checkoutRequestId =
-      typeof stkData.CheckoutRequestID === "string" ? stkData.CheckoutRequestID : null;
+    const checkoutRequestId = stkData.CheckoutRequestID?.trim() || null;
 
-    if (responseCode === "0" && checkoutRequestId) {
-      const intentInsert = await supabaseAdmin.from("payment_intents").upsert(
+    if (responseCode !== "0" || !checkoutRequestId) {
+      return NextResponse.json(
         {
-          checkout_request_id: checkoutRequestId,
-          phone: phoneNumber,
-          resource_id: normalizedResourceId,
-          amount,
-          status: "initiated",
-          updated_at: new Date().toISOString(),
+          error:
+            stkData.errorMessage ||
+            stkData.CustomerMessage ||
+            stkData.ResponseDescription ||
+            "M-PESA did not accept the STK request. Please confirm your phone number and try again.",
+          details: stkData,
+          status: stkResponse.status,
         },
-        { onConflict: "checkout_request_id" },
+        { status: 502 },
       );
+    }
 
-      if (intentInsert.error) {
-        console.error("Failed to persist payment intent:", intentInsert.error.message);
-      }
+    const intentInsert = await supabaseAdmin.from("payment_intents").upsert(
+      {
+        checkout_request_id: checkoutRequestId,
+        phone: phoneNumber,
+        resource_id: normalizedResourceId,
+        amount,
+        status: "initiated",
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "checkout_request_id" },
+    );
+
+    if (intentInsert.error) {
+      console.error("Failed to persist payment intent:", intentInsert.error.message);
     }
 
     return NextResponse.json(stkData);
