@@ -18,6 +18,12 @@ type VerifyResponse = {
   paid: boolean;
 };
 
+type StkQueryResponse = {
+  error?: string;
+  ResultCode?: string;
+  ResultDesc?: string;
+};
+
 function parseJsonSafe<T>(raw: string): T | null {
   if (!raw) {
     return null;
@@ -88,6 +94,34 @@ export function MpesaPaymentForm({
     return Boolean(data?.paid);
   }
 
+  async function checkStkPushStatus(incomingCheckoutRequestId?: string) {
+    const effectiveCheckoutRequestId =
+      incomingCheckoutRequestId ?? (checkoutRequestId || undefined);
+
+    if (!effectiveCheckoutRequestId) {
+      return null;
+    }
+
+    const response = await fetch("/api/stkpush-query", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        checkoutRequestId: effectiveCheckoutRequestId,
+      }),
+    });
+
+    const raw = await response.text();
+    const data = parseJsonSafe<StkQueryResponse>(raw);
+
+    if (!response.ok) {
+      throw new Error(data?.error || "Could not check STK status.");
+    }
+
+    return data;
+  }
+
   function startVerificationPolling(phoneNumber: string, incomingCheckoutRequestId?: string) {
     stopPolling();
     pollAttempts.current = 0;
@@ -104,6 +138,22 @@ export function MpesaPaymentForm({
       }
 
       try {
+        // Query Safaricom every 9 seconds to expose explicit ResultDesc failures.
+        if (pollAttempts.current % 3 === 0) {
+          const queryResult = await checkStkPushStatus(incomingCheckoutRequestId);
+          const resultCode = queryResult?.ResultCode?.trim();
+          if (resultCode && resultCode !== "0") {
+            stopPolling();
+            setIsWaitingForConfirmation(false);
+            setIsError(true);
+            setMessage(
+              queryResult?.ResultDesc ||
+                "M-PESA declined the request. Please confirm details and try again.",
+            );
+            return;
+          }
+        }
+
         const paid = await checkPaymentStatus(phoneNumber, incomingCheckoutRequestId);
         if (paid) {
           stopPolling();
@@ -175,7 +225,7 @@ export function MpesaPaymentForm({
       setCheckoutRequestId(data?.CheckoutRequestID ?? "");
       setIsWaitingForConfirmation(true);
       setIsError(false);
-      setMessage("STK push sent. Complete payment on your phone.");
+      setMessage("STK push sent. Complete payment on your phone. We are tracking status.");
       startVerificationPolling(phone, data?.CheckoutRequestID);
     } catch {
       setIsError(true);
