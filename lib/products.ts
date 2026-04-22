@@ -7,6 +7,7 @@ export type Product = {
   price: number;
   subject: string;
   grade: string;
+  file: string;
 };
 
 type ProductResult = {
@@ -17,7 +18,7 @@ type ProductResult = {
 export async function getAllProducts(): Promise<ProductResult> {
   const { data, error } = await supabase
     .from("products")
-    .select("id, title, description, price, subject, grade")
+    .select("id, title, description, price, subject, grade, file")
     .order("title", { ascending: true });
 
   return {
@@ -29,7 +30,7 @@ export async function getAllProducts(): Promise<ProductResult> {
 export async function getProductsBySubject(subject: string): Promise<ProductResult> {
   const { data, error } = await supabase
     .from("products")
-    .select("id, title, description, price, subject, grade")
+    .select("id, title, description, price, subject, grade, file")
     .ilike("subject", subject)
     .order("title", { ascending: true });
 
@@ -51,7 +52,7 @@ export async function getProductById(id: string): Promise<{
 
   const { data, error } = await supabase
     .from("products")
-    .select("id, title, description, price, subject, grade")
+    .select("id, title, description, price, subject, grade, file")
     .eq("id", normalizedId)
     .maybeSingle();
 

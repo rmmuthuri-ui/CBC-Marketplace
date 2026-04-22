@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { formatPhoneNumber, generatePassword, getTimestamp } from "@/lib/mpesa";
+import { rememberPendingCheckout } from "@/lib/paymentStore";
 
 export const runtime = "nodejs";
 
 type StkPushPayload = {
   phone: string;
   amount: number;
+  resourceId: string;
 };
 
 function getRequiredEnv(name: string): string {
@@ -36,11 +38,11 @@ function getMpesaBaseUrl(): string {
 
 export async function POST(request: Request) {
   try {
-    const { phone, amount } = (await request.json()) as StkPushPayload;
+    const { phone, amount, resourceId } = (await request.json()) as StkPushPayload;
 
-    if (!phone || !amount || Number(amount) <= 0) {
+    if (!phone || !amount || Number(amount) <= 0 || !resourceId?.trim()) {
       return NextResponse.json(
-        { error: "Phone number and a valid amount are required." },
+        { error: "Phone number, resource ID, and a valid amount are required." },
         { status: 400 },
       );
     }
@@ -106,8 +108,8 @@ export async function POST(request: Request) {
       PartyA: phoneNumber,
       PartyB: "5493533",
       PhoneNumber: phoneNumber,
-      CallBackURL: "https://cbcmarketplace.co.ke/api/callback",
-      AccountReference: "CBC Marketplace",
+      CallBackURL: callbackUrl,
+      AccountReference: resourceId.trim(),
       TransactionDesc: "Payment for CBC resources",
     };
 
@@ -133,6 +135,11 @@ export async function POST(request: Request) {
         },
         { status: 502 },
       );
+    }
+
+    const checkoutRequestId = String(stkData.CheckoutRequestID ?? "");
+    if (checkoutRequestId) {
+      rememberPendingCheckout(checkoutRequestId, resourceId.trim());
     }
 
     return NextResponse.json(stkData);
