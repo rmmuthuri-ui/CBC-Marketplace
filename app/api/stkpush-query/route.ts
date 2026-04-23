@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { generatePassword, getTimestamp } from "@/lib/mpesa";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
 
@@ -127,6 +128,40 @@ export async function POST(request: Request) {
         },
         { status: 502 },
       );
+    }
+
+    const resultCode = String(queryData.ResultCode ?? "");
+    if (resultCode === "0") {
+      const intentLookup = await supabaseAdmin
+        .from("payment_intents")
+        .select("checkout_request_id, phone, amount, resource_id")
+        .eq("checkout_request_id", checkoutRequestId)
+        .maybeSingle();
+
+      if (intentLookup.data && !intentLookup.error) {
+        const paidAt = new Date().toISOString();
+        await supabaseAdmin
+          .from("payment_intents")
+          .update({ status: "paid", paid_at: paidAt, updated_at: paidAt })
+          .eq("checkout_request_id", checkoutRequestId);
+
+        const paymentUpsert = await supabaseAdmin.from("payments").upsert(
+          {
+            checkout_request_id: intentLookup.data.checkout_request_id,
+            phone: intentLookup.data.phone,
+            amount: Number(intentLookup.data.amount),
+            resource_id: intentLookup.data.resource_id,
+            status: "paid",
+          },
+          { onConflict: "checkout_request_id" },
+        );
+
+        if (paymentUpsert.error) {
+          console.error("Failed to upsert payment from STK query fallback:", paymentUpsert.error);
+        }
+      } else if (intentLookup.error) {
+        console.error("Failed to lookup payment intent for STK query fallback:", intentLookup.error);
+      }
     }
 
     return NextResponse.json(queryData);
