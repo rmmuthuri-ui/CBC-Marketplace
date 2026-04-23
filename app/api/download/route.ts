@@ -9,6 +9,34 @@ type DownloadPayload = {
   resourceId: string;
 };
 
+type StorageTarget = {
+  bucket: string;
+  path: string;
+};
+
+function parseStorageTarget(fileUrl: string): StorageTarget {
+  const raw = fileUrl.trim();
+  const withoutQuery = raw.split("?")[0];
+  const decoded = decodeURIComponent(withoutQuery);
+
+  const objectPathMatch = decoded.match(/\/storage\/v1\/object\/(?:public|sign)\/([^/]+)\/(.+)$/);
+  if (objectPathMatch) {
+    return {
+      bucket: objectPathMatch[1],
+      path: objectPathMatch[2],
+    };
+  }
+
+  if (decoded.startsWith("Resources/")) {
+    return { bucket: "Resources", path: decoded.slice("Resources/".length) };
+  }
+  if (decoded.startsWith("resources/")) {
+    return { bucket: "resources", path: decoded.slice("resources/".length) };
+  }
+
+  return { bucket: "Resources", path: decoded.replace(/^\/+/, "") };
+}
+
 export async function POST(request: Request) {
   const payload = (await request.json().catch(() => null)) as DownloadPayload | null;
   if (!payload) {
@@ -53,11 +81,36 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Resource file not found." }, { status: 404 });
     }
 
-    const signed = await supabaseAdmin.storage
-      .from("Resources")
-      .createSignedUrl(resourceRecord.data.file_url, 60);
+    const primaryTarget = parseStorageTarget(resourceRecord.data.file_url);
+    const fallbackPath = primaryTarget.path.replace(/^resources\//i, "");
+    const candidateTargets: StorageTarget[] = [
+      primaryTarget,
+      { bucket: "Resources", path: fallbackPath },
+      { bucket: "resources", path: fallbackPath },
+    ].filter((target, index, self) => {
+      return (
+        target.path.length > 0 &&
+        self.findIndex((item) => item.bucket === target.bucket && item.path === target.path) === index
+      );
+    });
 
-    if (signed.error || !signed.data?.signedUrl) {
+    let signed:
+      | {
+          data: { signedUrl?: string } | null;
+          error: { message: string } | null;
+        }
+      | undefined;
+
+    for (const target of candidateTargets) {
+      const attempt = await supabaseAdmin.storage.from(target.bucket).createSignedUrl(target.path, 60);
+      if (!attempt.error && attempt.data?.signedUrl) {
+        signed = { data: attempt.data, error: null };
+        break;
+      }
+      signed = { data: attempt.data ?? null, error: attempt.error ? { message: attempt.error.message } : null };
+    }
+
+    if (!signed?.data?.signedUrl) {
       return NextResponse.json({ error: "Failed to generate secure download URL." }, { status: 500 });
     }
 
