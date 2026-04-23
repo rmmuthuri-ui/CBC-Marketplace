@@ -102,17 +102,13 @@ export function MpesaPaymentForm({
     const effectiveCheckoutRequestId =
       incomingCheckoutRequestId ?? (checkoutRequestId || undefined);
 
-    if (!effectiveCheckoutRequestId) {
-      return null;
-    }
-
     const response = await fetch("/api/stkpush-query", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        checkoutRequestId: effectiveCheckoutRequestId,
+        checkoutRequestId: effectiveCheckoutRequestId ?? undefined,
         phone,
         resourceId,
       }),

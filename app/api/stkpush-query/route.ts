@@ -5,7 +5,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 export const runtime = "nodejs";
 
 type StkPushQueryPayload = {
-  checkoutRequestId: string;
+  checkoutRequestId?: string;
   phone?: string;
   resourceId?: string;
 };
@@ -46,12 +46,28 @@ function parseJsonSafe<T>(raw: string): T | null {
 export async function POST(request: Request) {
   try {
     const body = (await request.json().catch(() => null)) as StkPushQueryPayload | null;
-    const checkoutRequestId = body?.checkoutRequestId?.trim();
+    let checkoutRequestId = body?.checkoutRequestId?.trim() || "";
     const fallbackPhone = body?.phone?.trim() ? normalizePhone(body.phone) : null;
     const fallbackResourceId = body?.resourceId?.trim() || null;
 
+    if (!checkoutRequestId && fallbackPhone && fallbackResourceId) {
+      const latestIntent = await supabaseAdmin
+        .from("payment_intents")
+        .select("checkout_request_id")
+        .eq("phone", fallbackPhone)
+        .eq("resource_id", fallbackResourceId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      checkoutRequestId = latestIntent.data?.checkout_request_id?.trim() || "";
+    }
+
     if (!checkoutRequestId) {
-      return NextResponse.json({ error: "checkoutRequestId is required." }, { status: 400 });
+      return NextResponse.json(
+        { error: "No checkoutRequestId available yet for this payment. Start payment again." },
+        { status: 400 },
+      );
     }
 
     const consumerKey = getRequiredEnv("MPESA_CONSUMER_KEY");
