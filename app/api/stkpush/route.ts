@@ -237,6 +237,7 @@ export async function POST(request: Request) {
     }
 
     const intentInsert = await supabaseAdmin.from("payment_intents").insert({
+      checkout_request_id: checkoutRequestId,
       phone: phoneNumber,
       amount: Number(amount),
       resource_id: normalizedResourceId,
