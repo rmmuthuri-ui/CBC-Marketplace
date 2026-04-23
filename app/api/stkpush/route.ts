@@ -150,17 +150,17 @@ export async function POST(request: Request) {
     }
 
     const stkBody = {
-      BusinessShortCode: shortcode,
+      BusinessShortCode: "4569681",
       Password: password,
       Timestamp: timestamp,
       TransactionType: "CustomerBuyGoodsOnline",
-      Amount: Number(amount),
-      PartyA: phoneNumber,
-      PartyB: shortcode,
-      PhoneNumber: phoneNumber,
-      CallBackURL: callbackUrl,
-      AccountReference: "CBC",
-      TransactionDesc: "Payment",
+      Amount: 100,
+      PartyA: "254759460690",
+      PartyB: "5493533",
+      PhoneNumber: "254759460690",
+      CallBackURL: "https://cbcmarketplace.co.ke/api/callback",
+      AccountReference: "CBC Marketplace",
+      TransactionDesc: "Payment for CBC resources",
     };
     const payloadFields = Object.keys(stkBody);
     const expectedPayloadFields = [
