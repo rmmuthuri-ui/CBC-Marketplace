@@ -159,8 +159,8 @@ export async function POST(request: Request) {
       PartyB: shortcode,
       PhoneNumber: phoneNumber,
       CallBackURL: callbackUrl,
-      AccountReference: normalizedResourceId,
-      TransactionDesc: "Payment for CBC resources",
+      AccountReference: normalizedResourceId.slice(0, 10),
+      TransactionDesc: "CBC Payment",
     };
     const payloadFields = Object.keys(stkBody);
     const expectedPayloadFields = [
@@ -236,19 +236,15 @@ export async function POST(request: Request) {
       );
     }
 
-    const intentInsert = await supabaseAdmin.from("payment_intents").upsert(
-      {
-        checkout_request_id: checkoutRequestId,
-        phone: phoneNumber,
-        resource_id: normalizedResourceId,
-        amount,
-        status: "initiated",
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "checkout_request_id" },
-    );
+    const intentInsert = await supabaseAdmin.from("payment_intents").insert({
+      phone: phoneNumber,
+      amount: Number(amount),
+      resource_id: normalizedResourceId,
+      status: "pending",
+    });
 
     if (intentInsert.error) {
+      console.log("SUPABASE INSERT ERROR:", intentInsert.error);
       console.error("Failed to persist payment intent:", intentInsert.error.message);
     }
 
