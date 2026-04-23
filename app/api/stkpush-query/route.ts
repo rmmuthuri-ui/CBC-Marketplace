@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
-import { generatePassword, getTimestamp } from "@/lib/mpesa";
+import { generatePassword, getTimestamp, normalizePhone } from "@/lib/mpesa";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
 
 type StkPushQueryPayload = {
   checkoutRequestId: string;
+  phone?: string;
+  resourceId?: string;
 };
 
 type StkPushQueryResponse = {
@@ -45,6 +47,8 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json().catch(() => null)) as StkPushQueryPayload | null;
     const checkoutRequestId = body?.checkoutRequestId?.trim();
+    const fallbackPhone = body?.phone?.trim() ? normalizePhone(body.phone) : null;
+    const fallbackResourceId = body?.resourceId?.trim() || null;
 
     if (!checkoutRequestId) {
       return NextResponse.json({ error: "checkoutRequestId is required." }, { status: 400 });
@@ -138,19 +142,49 @@ export async function POST(request: Request) {
         .eq("checkout_request_id", checkoutRequestId)
         .maybeSingle();
 
+      const paidAt = new Date().toISOString();
+      const effectivePhone = intentLookup.data?.phone ?? fallbackPhone;
+      const effectiveResourceId = intentLookup.data?.resource_id ?? fallbackResourceId;
+      let effectiveAmount = Number(intentLookup.data?.amount ?? 0);
+
+      if ((!effectiveAmount || effectiveAmount <= 0) && effectiveResourceId) {
+        const productLookup = await supabaseAdmin
+          .from("products")
+          .select("price")
+          .eq("id", effectiveResourceId)
+          .maybeSingle();
+        effectiveAmount = Number(productLookup.data?.price ?? 0);
+      }
+
       if (intentLookup.data && !intentLookup.error) {
-        const paidAt = new Date().toISOString();
         await supabaseAdmin
           .from("payment_intents")
           .update({ status: "paid", paid_at: paidAt, updated_at: paidAt })
           .eq("checkout_request_id", checkoutRequestId);
+      } else if (effectivePhone && effectiveResourceId) {
+        await supabaseAdmin.from("payment_intents").upsert(
+          {
+            checkout_request_id: checkoutRequestId,
+            phone: effectivePhone,
+            resource_id: effectiveResourceId,
+            amount: Number(effectiveAmount || 0),
+            status: "paid",
+            paid_at: paidAt,
+            updated_at: paidAt,
+          },
+          { onConflict: "checkout_request_id" },
+        );
+      } else if (intentLookup.error) {
+        console.error("Failed to lookup payment intent for STK query fallback:", intentLookup.error);
+      }
 
+      if (effectivePhone && effectiveResourceId) {
         const paymentUpsert = await supabaseAdmin.from("payments").upsert(
           {
-            checkout_request_id: intentLookup.data.checkout_request_id,
-            phone: intentLookup.data.phone,
-            amount: Number(intentLookup.data.amount),
-            resource_id: intentLookup.data.resource_id,
+            checkout_request_id: checkoutRequestId,
+            phone: effectivePhone,
+            amount: Number(effectiveAmount || 0),
+            resource_id: effectiveResourceId,
             status: "paid",
           },
           { onConflict: "checkout_request_id" },
@@ -159,8 +193,6 @@ export async function POST(request: Request) {
         if (paymentUpsert.error) {
           console.error("Failed to upsert payment from STK query fallback:", paymentUpsert.error);
         }
-      } else if (intentLookup.error) {
-        console.error("Failed to lookup payment intent for STK query fallback:", intentLookup.error);
       }
     }
 

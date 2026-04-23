@@ -36,6 +36,10 @@ function parseJsonSafe<T>(raw: string): T | null {
   }
 }
 
+function delay(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
 export function MpesaPaymentForm({
   defaultAmount = 1,
   resourceId,
@@ -109,6 +113,8 @@ export function MpesaPaymentForm({
       },
       body: JSON.stringify({
         checkoutRequestId: effectiveCheckoutRequestId,
+        phone,
+        resourceId,
       }),
     });
 
@@ -190,7 +196,16 @@ export function MpesaPaymentForm({
         return;
       }
 
-      const paid = await checkPaymentStatus(phone);
+      let paid = await checkPaymentStatus(phone);
+      if (!paid) {
+        await delay(1200);
+        paid = await checkPaymentStatus(phone);
+      }
+      if (!paid) {
+        await delay(1200);
+        paid = await checkPaymentStatus(phone);
+      }
+
       if (paid) {
         setIsPaid(true);
         setIsWaitingForConfirmation(false);
