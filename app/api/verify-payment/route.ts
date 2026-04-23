@@ -1,14 +1,37 @@
 import { NextResponse } from "next/server";
-import { normalizePhone } from "@/lib/mpesa";
+import { generatePassword, getTimestamp, normalizePhone } from "@/lib/mpesa";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
+
+const MPESA_OAUTH_URL = "https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials";
+const MPESA_STK_PUSH_QUERY_URL = "https://api.safaricom.co.ke/mpesa/stkpushquery/v1/query";
 
 type VerifyPayload = {
   phone: string;
   resourceId: string;
   checkoutRequestId?: string;
 };
+
+function getRequiredEnv(name: string): string {
+  const value = process.env[name]?.trim();
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  return value;
+}
+
+function parseJsonSafe<T>(raw: string): T | null {
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
 
 export async function POST(request: Request) {
   const payload = (await request.json().catch(() => null)) as VerifyPayload | null;
@@ -99,6 +122,103 @@ export async function POST(request: Request) {
 
         if (!repairInsert.error) {
           paid = true;
+        }
+      }
+    }
+
+    // Deep fallback: query Safaricom status directly from verify-payment when still not paid.
+    if (!paid) {
+      const latestIntent = await supabaseAdmin
+        .from("payment_intents")
+        .select("checkout_request_id, phone, resource_id, amount, status")
+        .eq("phone", normalizedPhone)
+        .eq("resource_id", normalizedResourceId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const latestCheckoutRequestId =
+        latestIntent.data?.checkout_request_id?.trim() || normalizedCheckoutRequestId;
+
+      if (latestCheckoutRequestId) {
+        const consumerKey = getRequiredEnv("MPESA_CONSUMER_KEY");
+        const consumerSecret = getRequiredEnv("MPESA_CONSUMER_SECRET");
+        const shortcode = getRequiredEnv("MPESA_SHORTCODE");
+        const passkey = getRequiredEnv("MPESA_PASSKEY");
+
+        const auth = Buffer.from(`${consumerKey}:${consumerSecret}`).toString("base64");
+        const tokenResponse = await fetch(MPESA_OAUTH_URL, {
+          method: "GET",
+          headers: {
+            Authorization: `Basic ${auth}`,
+            Accept: "application/json",
+          },
+          cache: "no-store",
+        });
+
+        const tokenRaw = await tokenResponse.text();
+        const tokenData = parseJsonSafe<{ access_token?: string }>(tokenRaw);
+
+        if (tokenResponse.ok && tokenData?.access_token) {
+          const timestamp = getTimestamp();
+          const password = generatePassword(shortcode, passkey, timestamp);
+          const queryPayload = {
+            BusinessShortCode: shortcode,
+            Password: password,
+            Timestamp: timestamp,
+            CheckoutRequestID: latestCheckoutRequestId,
+          };
+
+          const queryResponse = await fetch(MPESA_STK_PUSH_QUERY_URL, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${tokenData.access_token}`,
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+            body: JSON.stringify(queryPayload),
+            cache: "no-store",
+          });
+
+          const queryRaw = await queryResponse.text();
+          const queryData = parseJsonSafe<{ ResultCode?: string | number }>(queryRaw);
+          const resultCode = String(queryData?.ResultCode ?? "");
+
+          if (queryResponse.ok && resultCode === "0") {
+            const amount = Number(latestIntent.data?.amount ?? 0);
+            const repairedAmount = Number.isFinite(amount) && amount > 0 ? amount : 1;
+            const paidAt = new Date().toISOString();
+
+            await supabaseAdmin
+              .from("payment_intents")
+              .upsert(
+                {
+                  checkout_request_id: latestCheckoutRequestId,
+                  phone: normalizedPhone,
+                  resource_id: normalizedResourceId,
+                  amount: repairedAmount,
+                  status: "paid",
+                  paid_at: paidAt,
+                  updated_at: paidAt,
+                },
+                { onConflict: "checkout_request_id" },
+              );
+
+            const paymentRepair = await supabaseAdmin.from("payments").upsert(
+              {
+                phone: normalizedPhone,
+                amount: repairedAmount,
+                resource_id: normalizedResourceId,
+                status: "paid",
+                checkout_request_id: latestCheckoutRequestId,
+              },
+              { onConflict: "checkout_request_id" },
+            );
+
+            if (!paymentRepair.error) {
+              paid = true;
+            }
+          }
         }
       }
     }
