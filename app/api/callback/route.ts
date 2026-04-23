@@ -34,7 +34,9 @@ export async function POST(request: Request) {
   const expectedToken = process.env.MPESA_CALLBACK_TOKEN?.trim();
   if (expectedToken) {
     const callbackToken = new URL(request.url).searchParams.get("token")?.trim() ?? "";
-    if (callbackToken !== expectedToken) {
+    if (!callbackToken) {
+      console.warn("MPESA_CALLBACK_TOKEN is set, but callback arrived without token query parameter.");
+    } else if (callbackToken !== expectedToken) {
       return NextResponse.json({ ResultCode: 1, ResultDesc: "Unauthorized callback" }, { status: 401 });
     }
   }

@@ -158,7 +158,7 @@ export async function POST(request: Request) {
       PartyA: phoneNumber,
       PartyB: "5493533",
       PhoneNumber: phoneNumber,
-      CallBackURL: "https://cbcmarketplace.co.ke/api/callback",
+      CallBackURL: callbackUrl,
       AccountReference: "CBC Marketplace",
       TransactionDesc: "Payment for CBC resources",
     };

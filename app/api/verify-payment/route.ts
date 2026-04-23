@@ -72,7 +72,37 @@ export async function POST(request: Request) {
       };
     }
 
-    const paid = Boolean(paymentQuery.data?.id);
+    let paid = Boolean(paymentQuery.data?.id);
+
+    // Fallback: if callback marked intent as paid but payments row is missing, repair it.
+    if (!paid && normalizedCheckoutRequestId) {
+      const paidIntent = await supabaseAdmin
+        .from("payment_intents")
+        .select("checkout_request_id, phone, resource_id, amount, status")
+        .eq("checkout_request_id", normalizedCheckoutRequestId)
+        .eq("phone", normalizedPhone)
+        .eq("resource_id", normalizedResourceId)
+        .eq("status", "paid")
+        .maybeSingle();
+
+      if (paidIntent.data && !paidIntent.error) {
+        const repairInsert = await supabaseAdmin.from("payments").upsert(
+          {
+            phone: paidIntent.data.phone,
+            amount: Number(paidIntent.data.amount),
+            resource_id: paidIntent.data.resource_id,
+            status: "paid",
+            checkout_request_id: paidIntent.data.checkout_request_id,
+          },
+          { onConflict: "checkout_request_id" },
+        );
+
+        if (!repairInsert.error) {
+          paid = true;
+        }
+      }
+    }
+
     console.log("Verify-payment query result:", {
       paid,
       payment: paymentQuery.data ?? null,
