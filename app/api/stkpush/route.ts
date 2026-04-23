@@ -159,8 +159,8 @@ export async function POST(request: Request) {
       PartyB: shortcode,
       PhoneNumber: phoneNumber,
       CallBackURL: callbackUrl,
-      AccountReference: normalizedResourceId.slice(0, 10),
-      TransactionDesc: "CBC Payment",
+      AccountReference: "CBC",
+      TransactionDesc: "Payment",
     };
     const payloadFields = Object.keys(stkBody);
     const expectedPayloadFields = [
