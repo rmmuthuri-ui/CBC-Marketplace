@@ -179,6 +179,17 @@ export function MpesaPaymentForm({
     setIsError(false);
 
     try {
+      const queryResult = await checkStkPushStatus();
+      const resultCode = queryResult?.ResultCode?.trim();
+      if (resultCode && resultCode !== "0") {
+        setIsError(true);
+        setMessage(
+          queryResult?.ResultDesc ||
+            "M-PESA declined the request. Please confirm details and try again.",
+        );
+        return;
+      }
+
       const paid = await checkPaymentStatus(phone);
       if (paid) {
         setIsPaid(true);
