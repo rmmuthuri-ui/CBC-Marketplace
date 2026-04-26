@@ -1,41 +1,34 @@
-import { MetadataRoute } from 'next'
+import { MetadataRoute } from "next";
+import { getAllProducts } from "@/lib/products";
+import { MARKETPLACE_SUBJECTS, subjectToSlug } from "@/lib/subjects";
 
-export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = 'https://cbcmarketplace.co.ke'
+const BASE_URL = "https://www.cbcmarketplace.co.ke";
 
-  const staticPages = [
-    '',
-    '/subjects/mathematics',
-    '/subjects/science-technology',
-    '/subjects/english',
-  ]
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const now = new Date();
 
-  const products = [
-    'acids-bases-and-salts',
-    'atoms-elements-compounds',
-    'chemical-reactions-metals',
-    'circle-parts-of-a-circle',
-    'electrochemistry',
-    'experimental-techniques',
-    'finding-the-nth-term',
-    'laws-of-indices',
-    'organic-chemistry',
-    'periodic-table',
-    'similar-shapes',
-    'states-of-matter',
-    'stoichiometry',
-    'straight-line-graphs'
-  ]
+  const staticPages = ["", "/subjects/mathematics", "/subjects/science-technology", "/subjects/english"];
+  const subjectPages = MARKETPLACE_SUBJECTS.map((subject) => `/subjects/${subjectToSlug(subject)}`);
 
-  const staticUrls = staticPages.map((path) => ({
-    url: `${baseUrl}${path}`,
-    lastModified: new Date(),
-  }))
+  const staticUrls = [...new Set([...staticPages, ...subjectPages])].map((path) => ({
+    url: `${BASE_URL}${path}`,
+    lastModified: now,
+    changeFrequency: "weekly" as const,
+    priority: path === "" ? 1 : 0.7,
+  }));
 
-  const productUrls = products.map((slug) => ({
-    url: `${baseUrl}/products/${slug}`,
-    lastModified: new Date(),
-  }))
+  let productUrls: MetadataRoute.Sitemap = [];
+  try {
+    const products = await getAllProducts();
+    productUrls = (products.data ?? []).map((product) => ({
+      url: `${BASE_URL}/product/${product.id}`,
+      lastModified: now,
+      changeFrequency: "weekly" as const,
+      priority: 0.8,
+    }));
+  } catch {
+    // Return static URLs even if product fetch fails.
+  }
 
-  return [...staticUrls, ...productUrls]
+  return [...staticUrls, ...productUrls];
 }

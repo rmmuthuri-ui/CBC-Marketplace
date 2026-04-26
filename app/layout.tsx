@@ -9,8 +9,19 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://www.cbcmarketplace.co.ke"),
   title: "CBC/CBE Marketplace",
   description: "A platform for Kenyan CBC/CBE learning resources.",
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    title: "CBC/CBE Marketplace",
+    description: "A platform for Kenyan CBC/CBE learning resources.",
+    url: "https://www.cbcmarketplace.co.ke",
+    siteName: "CBC/CBE Marketplace",
+    type: "website",
+  },
 };
 
 export default function RootLayout({
