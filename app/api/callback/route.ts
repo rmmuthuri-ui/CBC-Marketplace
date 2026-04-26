@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { normalizePhone } from "@/lib/mpesa";
+import { ensureSellerLedgerEntryForPayment } from "@/lib/sellerLedger";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
@@ -139,7 +140,9 @@ export async function POST(request: Request) {
 
       const insertResult = await supabaseAdmin
         .from("payments")
-        .upsert(paymentPayload, { onConflict: "checkout_request_id" });
+        .upsert(paymentPayload, { onConflict: "checkout_request_id" })
+        .select("id")
+        .maybeSingle();
 
       if (insertResult.error) {
         console.error("Failed to insert paid payment:", insertResult.error.message);
@@ -148,6 +151,9 @@ export async function POST(request: Request) {
           error: insertResult.error,
         });
       } else {
+        if (insertResult.data?.id) {
+          await ensureSellerLedgerEntryForPayment(insertResult.data.id);
+        }
         console.log("Payment confirmed from callback:", {
           phone,
           amount,

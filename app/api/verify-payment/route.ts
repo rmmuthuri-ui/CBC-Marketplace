@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { generatePassword, getTimestamp, normalizePhone } from "@/lib/mpesa";
+import { ensureSellerLedgerEntryForPayment } from "@/lib/sellerLedger";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
@@ -118,9 +119,14 @@ export async function POST(request: Request) {
             checkout_request_id: paidIntent.data.checkout_request_id,
           },
           { onConflict: "checkout_request_id" },
-        );
+        )
+        .select("id")
+        .maybeSingle();
 
         if (!repairInsert.error) {
+          if (repairInsert.data?.id) {
+            await ensureSellerLedgerEntryForPayment(repairInsert.data.id);
+          }
           paid = true;
         }
       }
@@ -213,9 +219,14 @@ export async function POST(request: Request) {
                 checkout_request_id: latestCheckoutRequestId,
               },
               { onConflict: "checkout_request_id" },
-            );
+            )
+            .select("id")
+            .maybeSingle();
 
             if (!paymentRepair.error) {
+              if (paymentRepair.data?.id) {
+                await ensureSellerLedgerEntryForPayment(paymentRepair.data.id);
+              }
               paid = true;
             }
           }

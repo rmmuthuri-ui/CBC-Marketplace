@@ -15,6 +15,8 @@ export default function SellPage() {
     "approved" | "pending" | "rejected" | "not_applied" | null
   >(null);
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
+  const [sellerReviewNotes, setSellerReviewNotes] = useState("");
+  const [sellerReviewedAt, setSellerReviewedAt] = useState("");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -38,9 +40,12 @@ export default function SellPage() {
     }
 
     if (sellerStatus === "approved") {
+      const reviewedText = sellerReviewedAt
+        ? ` Last review: ${new Date(sellerReviewedAt).toLocaleString()}.`
+        : "";
       return {
         className: "border border-green-200 bg-green-50 text-green-700",
-        message: "Your seller status: Approved. You can upload and submit resources.",
+        message: `Your seller status: Approved. You can upload and submit resources.${reviewedText}`,
       };
     }
 
@@ -52,9 +57,13 @@ export default function SellPage() {
     }
 
     if (sellerStatus === "rejected") {
+      const feedback = sellerReviewNotes ? ` Admin feedback: ${sellerReviewNotes}` : "";
+      const reviewedText = sellerReviewedAt
+        ? ` Last review: ${new Date(sellerReviewedAt).toLocaleString()}.`
+        : "";
       return {
         className: "border border-red-200 bg-red-50 text-red-700",
-        message: "Your seller status: Rejected. Update your details and reapply.",
+        message: `Your seller status: Rejected.${reviewedText}${feedback} Update your details and reapply.`,
       };
     }
 
@@ -62,11 +71,13 @@ export default function SellPage() {
       className: "border border-slate-200 bg-slate-50 text-slate-700",
       message: "No seller application found for this email yet.",
     };
-  }, [email, sellerStatus]);
+  }, [email, sellerReviewNotes, sellerReviewedAt, sellerStatus]);
 
   async function checkSellerStatus() {
     if (!email.trim()) {
       setSellerStatus(null);
+      setSellerReviewNotes("");
+      setSellerReviewedAt("");
       return;
     }
 
@@ -74,15 +85,24 @@ export default function SellPage() {
     try {
       const statusResponse = await fetch(`/api/seller/status?email=${encodeURIComponent(email.trim())}`);
       const statusData = (await statusResponse.json().catch(() => null)) as
-        | { error?: string; status?: "approved" | "pending" | "rejected" | "not_applied" }
+        | {
+            error?: string;
+            status?: "approved" | "pending" | "rejected" | "not_applied";
+            notes?: string | null;
+            reviewedAt?: string | null;
+          }
         | null;
 
       if (!statusResponse.ok) {
         setSellerStatus(null);
+        setSellerReviewNotes("");
+        setSellerReviewedAt("");
         return;
       }
 
       setSellerStatus(statusData?.status ?? "not_applied");
+      setSellerReviewNotes(statusData?.notes ?? "");
+      setSellerReviewedAt(statusData?.reviewedAt ?? "");
     } finally {
       setIsCheckingStatus(false);
     }
@@ -118,6 +138,8 @@ export default function SellPage() {
 
       if (applyData?.status !== "approved") {
         setSellerStatus((applyData?.status as "pending" | "rejected" | "not_applied" | undefined) ?? "pending");
+        setSellerReviewedAt(new Date().toISOString());
+        setSellerReviewNotes("");
         setMessage(
           "Seller application submitted. Your account is pending admin approval. You will be able to submit resources after approval.",
         );
@@ -180,6 +202,7 @@ export default function SellPage() {
       );
       setIsError(false);
       setSellerStatus("approved");
+      setSellerReviewedAt(new Date().toISOString());
     } catch {
       setIsError(true);
       setMessage("Could not submit at the moment. Please try again.");
@@ -212,6 +235,8 @@ export default function SellPage() {
             onChange={(event) => {
               setEmail(event.target.value);
               setSellerStatus(null);
+              setSellerReviewNotes("");
+              setSellerReviewedAt("");
             }}
             onBlur={checkSellerStatus}
             placeholder="Email"

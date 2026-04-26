@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { generatePassword, getTimestamp, normalizePhone } from "@/lib/mpesa";
+import { ensureSellerLedgerEntryForPayment } from "@/lib/sellerLedger";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
@@ -204,10 +205,14 @@ export async function POST(request: Request) {
             status: "paid",
           },
           { onConflict: "checkout_request_id" },
-        );
+        )
+        .select("id")
+        .maybeSingle();
 
         if (paymentUpsert.error) {
           console.error("Failed to upsert payment from STK query fallback:", paymentUpsert.error);
+        } else if (paymentUpsert.data?.id) {
+          await ensureSellerLedgerEntryForPayment(paymentUpsert.data.id);
         }
       }
     }

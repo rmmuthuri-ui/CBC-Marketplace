@@ -24,12 +24,26 @@ export async function GET(request: Request) {
   }
 
   if (profileLookup.data?.status === "active") {
-    return NextResponse.json({ status: "approved" });
+    const approvedApplication = await supabaseAdmin
+      .from("seller_applications")
+      .select("notes, updated_at")
+      .eq("email", email)
+      .maybeSingle();
+
+    if (approvedApplication.error) {
+      return NextResponse.json({ error: approvedApplication.error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      status: "approved",
+      notes: approvedApplication.data?.notes ?? null,
+      reviewedAt: approvedApplication.data?.updated_at ?? null,
+    });
   }
 
   const applicationLookup = await supabaseAdmin
     .from("seller_applications")
-    .select("status")
+    .select("status, notes, updated_at")
     .eq("email", email)
     .maybeSingle();
 
@@ -37,5 +51,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: applicationLookup.error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ status: applicationLookup.data?.status ?? "not_applied" });
+  return NextResponse.json({
+    status: applicationLookup.data?.status ?? "not_applied",
+    notes: applicationLookup.data?.notes ?? null,
+    reviewedAt: applicationLookup.data?.updated_at ?? null,
+  });
 }
