@@ -14,6 +14,37 @@ type SellerResourcePayload = {
   fileUrl?: string;
 };
 
+export async function GET(request: Request) {
+  const authHeader = request.headers.get("authorization") ?? "";
+  const accessToken = authHeader.startsWith("Bearer ") ? authHeader.slice("Bearer ".length).trim() : "";
+  if (!accessToken) {
+    return NextResponse.json({ error: "Missing authorization token." }, { status: 401 });
+  }
+
+  const userResult = await supabaseAdmin.auth.getUser(accessToken);
+  const authEmail = userResult.data.user?.email?.trim().toLowerCase();
+  if (userResult.error || !authEmail) {
+    return NextResponse.json({ error: "Invalid authentication session." }, { status: 401 });
+  }
+
+  const resourcesLookup = await supabaseAdmin
+    .from("seller_resources")
+    .select(
+      "id, title, subject, grade, price, review_status, rejection_reason, published_product_id, created_at, reviewed_at",
+    )
+    .eq("seller_email", authEmail)
+    .order("created_at", { ascending: false });
+
+  if (resourcesLookup.error) {
+    return NextResponse.json({ error: resourcesLookup.error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({
+    sellerEmail: authEmail,
+    entries: resourcesLookup.data ?? [],
+  });
+}
+
 export async function POST(request: Request) {
   const payload = (await request.json().catch(() => null)) as SellerResourcePayload | null;
   if (!payload) {

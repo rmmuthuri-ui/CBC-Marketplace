@@ -32,6 +32,25 @@ type SellerLedgerResponse = {
   error?: string;
 };
 
+type SellerResourceEntry = {
+  id: string;
+  title: string;
+  subject: string;
+  grade: string;
+  price: number;
+  review_status: string;
+  rejection_reason: string | null;
+  published_product_id: string | null;
+  created_at: string;
+  reviewed_at: string | null;
+};
+
+type SellerResourcesResponse = {
+  sellerEmail?: string;
+  entries?: SellerResourceEntry[];
+  error?: string;
+};
+
 function formatKes(amount: number): string {
   return `KES ${Number(amount || 0).toLocaleString()}`;
 }
@@ -45,6 +64,7 @@ export default function SellerDashboardPage() {
   const [isError, setIsError] = useState(false);
   const [message, setMessage] = useState("");
   const [ledgerData, setLedgerData] = useState<SellerLedgerResponse | null>(null);
+  const [resourceData, setResourceData] = useState<SellerResourcesResponse | null>(null);
 
   async function loadLedgerByEmail(email: string) {
     setIsLoading(true);
@@ -62,27 +82,47 @@ export default function SellerDashboardPage() {
       }
 
       const normalizedEmail = email.trim().toLowerCase();
-      const response = await fetch(`/api/seller/ledger?email=${encodeURIComponent(normalizedEmail)}`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-      const data = (await response.json().catch(() => null)) as SellerLedgerResponse | null;
+      const [ledgerResponse, resourcesResponse] = await Promise.all([
+        fetch(`/api/seller/ledger?email=${encodeURIComponent(normalizedEmail)}`, {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }),
+        fetch("/api/seller/resources", {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }),
+      ]);
 
-      if (!response.ok) {
+      const data = (await ledgerResponse.json().catch(() => null)) as SellerLedgerResponse | null;
+      const resourcesData = (await resourcesResponse.json().catch(() => null)) as SellerResourcesResponse | null;
+
+      if (!ledgerResponse.ok) {
         setLedgerData(null);
+        setResourceData(null);
         setIsError(true);
         setMessage(data?.error ?? "Failed to load seller earnings.");
         return;
       }
 
+      if (!resourcesResponse.ok) {
+        setLedgerData(null);
+        setResourceData(null);
+        setIsError(true);
+        setMessage(resourcesData?.error ?? "Failed to load submitted resources.");
+        return;
+      }
+
       setLedgerData(data);
+      setResourceData(resourcesData);
       setIsError(false);
       setMessage("");
     } catch {
       setLedgerData(null);
+      setResourceData(null);
       setIsError(true);
-      setMessage("Could not load earnings right now. Please try again.");
+      setMessage("Could not load seller dashboard right now. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -118,6 +158,7 @@ export default function SellerDashboardPage() {
     const userEmail = user?.email?.trim().toLowerCase();
     if (!userEmail) {
       setLedgerData(null);
+      setResourceData(null);
       return;
     }
     loadLedgerByEmail(userEmail);
@@ -157,8 +198,19 @@ export default function SellerDashboardPage() {
   async function handleSignOut() {
     await supabase.auth.signOut();
     setLedgerData(null);
+    setResourceData(null);
     setMessage("Signed out successfully.");
     setIsError(false);
+  }
+
+  function getStatusBadge(status: string): string {
+    if (status === "approved") {
+      return "border border-green-200 bg-green-50 text-green-700";
+    }
+    if (status === "rejected") {
+      return "border border-red-200 bg-red-50 text-red-700";
+    }
+    return "border border-amber-200 bg-amber-50 text-amber-700";
   }
 
   return (
@@ -281,6 +333,54 @@ export default function SellerDashboardPage() {
             </tbody>
           </table>
         </div>
+      ) : null}
+
+      {user?.email ? (
+        <section className="space-y-3">
+          <h2 className="text-xl font-semibold text-slate-900">My Submitted Resources</h2>
+          <div className="overflow-x-auto rounded-xl border border-slate-200">
+            <table className="min-w-full divide-y divide-slate-200 text-sm">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Submitted</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Title</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Subject</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Grade</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Price</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Review Status</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Rejection Reason</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {(resourceData?.entries ?? []).length === 0 ? (
+                  <tr>
+                    <td className="px-4 py-4 text-slate-500" colSpan={7}>
+                      No submitted resources yet.
+                    </td>
+                  </tr>
+                ) : (
+                  (resourceData?.entries ?? []).map((entry) => (
+                    <tr key={entry.id}>
+                      <td className="px-4 py-3 text-slate-700">{new Date(entry.created_at).toLocaleString()}</td>
+                      <td className="px-4 py-3 text-slate-700">{entry.title}</td>
+                      <td className="px-4 py-3 text-slate-700">{entry.subject}</td>
+                      <td className="px-4 py-3 text-slate-700">{entry.grade}</td>
+                      <td className="px-4 py-3 text-slate-700">{formatKes(entry.price)}</td>
+                      <td className="px-4 py-3 text-slate-700">
+                        <span
+                          className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${getStatusBadge(entry.review_status)}`}
+                        >
+                          {entry.review_status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">{entry.rejection_reason ?? "-"}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
       ) : null}
     </section>
   );
