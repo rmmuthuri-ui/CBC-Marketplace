@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { emailsMatch, extractBearerToken, normalizeEmail } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
@@ -22,28 +23,25 @@ function sumAmounts(rows: LedgerRow[], predicate?: (row: LedgerRow) => boolean):
 }
 
 export async function GET(request: Request) {
-  const authHeader = request.headers.get("authorization") ?? "";
-  const accessToken = authHeader.startsWith("Bearer ") ? authHeader.slice("Bearer ".length).trim() : "";
+  const accessToken = extractBearerToken(request.headers.get("authorization"));
   if (!accessToken) {
     return NextResponse.json({ error: "Missing authorization token." }, { status: 401 });
   }
 
   const userResult = await supabaseAdmin.auth.getUser(accessToken);
-  const authEmail = userResult.data.user?.email?.trim().toLowerCase();
+  const authEmail = normalizeEmail(userResult.data.user?.email);
   if (userResult.error || !authEmail) {
     return NextResponse.json({ error: "Invalid authentication session." }, { status: 401 });
   }
 
   const { searchParams } = new URL(request.url);
-  const email = String(searchParams.get("email") ?? "")
-    .trim()
-    .toLowerCase();
+  const email = normalizeEmail(searchParams.get("email"));
 
   if (!email) {
     return NextResponse.json({ error: "Email is required." }, { status: 400 });
   }
 
-  if (email !== authEmail) {
+  if (!emailsMatch(email, authEmail)) {
     return NextResponse.json({ error: "You can only view your own seller earnings." }, { status: 403 });
   }
 

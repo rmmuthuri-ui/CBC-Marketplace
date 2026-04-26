@@ -1,6 +1,8 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import type { User } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabase";
 import { MARKETPLACE_SUBJECTS } from "@/lib/subjects";
 
 function splitSubjects(raw: string): string[] {
@@ -11,6 +13,10 @@ function splitSubjects(raw: string): string[] {
 }
 
 export default function SellPage() {
+  const [user, setUser] = useState<User | null>(null);
+  const [authEmail, setAuthEmail] = useState("");
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [isSendingLink, setIsSendingLink] = useState(false);
   const [sellerStatus, setSellerStatus] = useState<
     "approved" | "pending" | "rejected" | "not_applied" | null
   >(null);
@@ -33,6 +39,38 @@ export default function SellPage() {
   const [message, setMessage] = useState("");
   const [isError, setIsError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function bootstrapAuth() {
+      const userResult = await supabase.auth.getUser();
+      if (mounted) {
+        const currentUser = userResult.data.user ?? null;
+        setUser(currentUser);
+        setEmail(currentUser?.email ?? "");
+        setIsAuthLoading(false);
+      }
+    }
+
+    bootstrapAuth();
+    const authSubscription = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) {
+        return;
+      }
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      setEmail(currentUser?.email ?? "");
+      setSellerStatus(null);
+      setSellerReviewNotes("");
+      setSellerReviewedAt("");
+    });
+
+    return () => {
+      mounted = false;
+      authSubscription.data.subscription.unsubscribe();
+    };
+  }, []);
 
   const statusBanner = useMemo(() => {
     if (!email.trim() || !sellerStatus) {
@@ -83,7 +121,20 @@ export default function SellPage() {
 
     setIsCheckingStatus(true);
     try {
-      const statusResponse = await fetch(`/api/seller/status?email=${encodeURIComponent(email.trim())}`);
+      const sessionResult = await supabase.auth.getSession();
+      const accessToken = sessionResult.data.session?.access_token;
+      if (!accessToken) {
+        setSellerStatus(null);
+        setSellerReviewNotes("");
+        setSellerReviewedAt("");
+        return;
+      }
+
+      const statusResponse = await fetch(`/api/seller/status?email=${encodeURIComponent(email.trim())}`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
       const statusData = (await statusResponse.json().catch(() => null)) as
         | {
             error?: string;
@@ -115,9 +166,17 @@ export default function SellPage() {
     setMessage("");
 
     try {
+      const sessionResult = await supabase.auth.getSession();
+      const accessToken = sessionResult.data.session?.access_token;
+      if (!accessToken) {
+        setIsError(true);
+        setMessage("Your session expired. Please sign in again.");
+        return;
+      }
+
       const applyResponse = await fetch("/api/seller/apply", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
         body: JSON.stringify({
           fullName,
           email,
@@ -156,6 +215,7 @@ export default function SellPage() {
 
         const uploadResponse = await fetch("/api/seller/upload", {
           method: "POST",
+          headers: { Authorization: `Bearer ${accessToken}` },
           body: uploadForm,
         });
         const uploadData = (await uploadResponse.json().catch(() => null)) as
@@ -175,7 +235,7 @@ export default function SellPage() {
 
       const resourceResponse = await fetch("/api/seller/resources", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
         body: JSON.stringify({
           sellerName: fullName,
           sellerEmail: email,
@@ -211,6 +271,41 @@ export default function SellPage() {
     }
   }
 
+  async function handleSendMagicLink(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsSendingLink(true);
+    setIsError(false);
+    setMessage("");
+
+    try {
+      const authResult = await supabase.auth.signInWithOtp({
+        email: authEmail.trim().toLowerCase(),
+        options: {
+          emailRedirectTo: `${window.location.origin}/sell`,
+        },
+      });
+      if (authResult.error) {
+        setIsError(true);
+        setMessage(authResult.error.message);
+        return;
+      }
+      setMessage("Magic sign-in link sent. Check your email, then open the link.");
+    } catch {
+      setIsError(true);
+      setMessage("Could not send sign-in link right now. Please try again.");
+    } finally {
+      setIsSendingLink(false);
+    }
+  }
+
+  async function handleSignOut() {
+    await supabase.auth.signOut();
+    setUser(null);
+    setEmail("");
+    setMessage("Signed out successfully.");
+    setIsError(false);
+  }
+
   return (
     <section className="mx-auto max-w-3xl space-y-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
       <header className="space-y-2">
@@ -219,6 +314,43 @@ export default function SellPage() {
           Start Phase 1 onboarding: submit your seller application and first resource for review.
         </p>
       </header>
+
+      {isAuthLoading ? (
+        <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+          Checking your session...
+        </div>
+      ) : user?.email ? (
+        <div className="flex flex-col gap-3 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 sm:flex-row sm:items-center sm:justify-between">
+          <p>
+            Signed in as <span className="font-semibold">{user.email}</span>
+          </p>
+          <button
+            type="button"
+            onClick={handleSignOut}
+            className="rounded-md border border-green-300 bg-white px-3 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-100"
+          >
+            Sign out
+          </button>
+        </div>
+      ) : (
+        <form onSubmit={handleSendMagicLink} className="flex flex-col gap-3 sm:flex-row">
+          <input
+            type="email"
+            value={authEmail}
+            onChange={(event) => setAuthEmail(event.target.value)}
+            placeholder="seller@email.com"
+            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-green-500 focus:ring"
+            required
+          />
+          <button
+            type="submit"
+            disabled={isSendingLink}
+            className="rounded-md bg-green-600 px-5 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isSendingLink ? "Sending link..." : "Send Magic Link"}
+          </button>
+        </form>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="grid gap-4 sm:grid-cols-2">
@@ -232,15 +364,10 @@ export default function SellPage() {
           <input
             type="email"
             value={email}
-            onChange={(event) => {
-              setEmail(event.target.value);
-              setSellerStatus(null);
-              setSellerReviewNotes("");
-              setSellerReviewedAt("");
-            }}
+            readOnly
             onBlur={checkSellerStatus}
-            placeholder="Email"
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-green-500 focus:ring"
+            placeholder="Signed-in seller email"
+            className="rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-700 outline-none ring-green-500 focus:ring"
             required
           />
           <input
@@ -262,7 +389,7 @@ export default function SellPage() {
           <button
             type="button"
             onClick={checkSellerStatus}
-            disabled={!email.trim() || isCheckingStatus}
+            disabled={!user?.email || !email.trim() || isCheckingStatus}
             className="rounded-md border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isCheckingStatus ? "Checking..." : "Check Seller Status"}
@@ -345,7 +472,7 @@ export default function SellPage() {
 
         <button
           type="submit"
-          disabled={isSubmitting}
+          disabled={isSubmitting || !user?.email}
           className="rounded-md bg-green-600 px-5 py-3 text-sm font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isSubmitting ? "Submitting..." : "Submit for Review"}

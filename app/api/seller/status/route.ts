@@ -1,16 +1,30 @@
 import { NextResponse } from "next/server";
+import { emailsMatch, extractBearerToken, normalizeEmail } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
+  const accessToken = extractBearerToken(request.headers.get("authorization"));
+  if (!accessToken) {
+    return NextResponse.json({ error: "Missing authorization token." }, { status: 401 });
+  }
+
+  const userResult = await supabaseAdmin.auth.getUser(accessToken);
+  const authEmail = normalizeEmail(userResult.data.user?.email);
+  if (userResult.error || !authEmail) {
+    return NextResponse.json({ error: "Invalid authentication session." }, { status: 401 });
+  }
+
   const { searchParams } = new URL(request.url);
-  const email = String(searchParams.get("email") ?? "")
-    .trim()
-    .toLowerCase();
+  const email = normalizeEmail(searchParams.get("email"));
 
   if (!email) {
     return NextResponse.json({ error: "Email is required." }, { status: 400 });
+  }
+
+  if (!emailsMatch(email, authEmail)) {
+    return NextResponse.json({ error: "You can only view your own seller status." }, { status: 403 });
   }
 
   const profileLookup = await supabaseAdmin

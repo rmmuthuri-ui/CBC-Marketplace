@@ -31,6 +31,7 @@ export async function POST(request: Request) {
     const applicationId = payload.applicationId.trim();
     const notes = payload.notes?.trim() || null;
     const status = payload.action === "approve" ? "approved" : "rejected";
+    const reviewedBy = request.headers.get("x-admin-user")?.trim() || "admin";
 
     const application = await supabaseAdmin
       .from("seller_applications")
@@ -47,6 +48,7 @@ export async function POST(request: Request) {
       .update({
         status,
         notes,
+        reviewed_by: reviewedBy,
         updated_at: new Date().toISOString(),
       })
       .eq("id", applicationId);

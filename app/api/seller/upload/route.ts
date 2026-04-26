@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { emailsMatch, extractBearerToken, normalizeEmail } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
@@ -21,8 +22,19 @@ function getExtension(fileName: string): string {
 
 export async function POST(request: Request) {
   try {
+    const accessToken = extractBearerToken(request.headers.get("authorization"));
+    if (!accessToken) {
+      return NextResponse.json({ error: "Missing authorization token." }, { status: 401 });
+    }
+
+    const userResult = await supabaseAdmin.auth.getUser(accessToken);
+    const authEmail = normalizeEmail(userResult.data.user?.email);
+    if (userResult.error || !authEmail) {
+      return NextResponse.json({ error: "Invalid authentication session." }, { status: 401 });
+    }
+
     const formData = await request.formData();
-    const sellerEmailRaw = String(formData.get("sellerEmail") ?? "").trim().toLowerCase();
+    const sellerEmailRaw = normalizeEmail(String(formData.get("sellerEmail") ?? ""));
     const titleRaw = String(formData.get("title") ?? "").trim();
     const file = formData.get("file");
 
@@ -31,6 +43,10 @@ export async function POST(request: Request) {
         { error: "sellerEmail, title, and file are required." },
         { status: 400 },
       );
+    }
+
+    if (!emailsMatch(authEmail, sellerEmailRaw)) {
+      return NextResponse.json({ error: "Authenticated seller email does not match upload payload." }, { status: 403 });
     }
 
     if (file.size <= 0 || file.size > MAX_FILE_SIZE_BYTES) {

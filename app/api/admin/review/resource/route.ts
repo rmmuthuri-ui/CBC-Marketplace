@@ -29,6 +29,7 @@ export async function POST(request: Request) {
     }
 
     const resourceId = payload.resourceId.trim();
+    const reviewedBy = request.headers.get("x-admin-user")?.trim() || "admin";
     const resource = await supabaseAdmin
       .from("seller_resources")
       .select("id, title, description, subject, grade, price, file_url")
@@ -45,6 +46,7 @@ export async function POST(request: Request) {
         .update({
           review_status: "rejected",
           rejection_reason: payload.rejectionReason?.trim() || "Not approved at this time.",
+          reviewed_by: reviewedBy,
           reviewed_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
@@ -83,6 +85,7 @@ export async function POST(request: Request) {
         review_status: "approved",
         rejection_reason: null,
         published_product_id: publish.data.id,
+        reviewed_by: reviewedBy,
         reviewed_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
