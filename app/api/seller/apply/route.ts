@@ -32,6 +32,18 @@ export async function POST(request: Request) {
     );
   }
 
+  const existing = await supabaseAdmin
+    .from("seller_applications")
+    .select("id, status")
+    .eq("email", email)
+    .maybeSingle();
+
+  if (existing.error) {
+    return NextResponse.json({ error: existing.error.message }, { status: 500 });
+  }
+
+  const nextStatus = existing.data?.status === "approved" ? "approved" : "pending";
+
   const upsertResult = await supabaseAdmin
     .from("seller_applications")
     .upsert(
@@ -41,7 +53,7 @@ export async function POST(request: Request) {
         phone,
         bio,
         subjects,
-        status: "pending",
+        status: nextStatus,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "email" },

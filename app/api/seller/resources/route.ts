@@ -36,6 +36,25 @@ export async function POST(request: Request) {
     );
   }
 
+  const sellerProfile = await supabaseAdmin
+    .from("seller_profiles")
+    .select("id, status")
+    .eq("email", sellerEmail)
+    .maybeSingle();
+
+  if (sellerProfile.error) {
+    return NextResponse.json({ error: sellerProfile.error.message }, { status: 500 });
+  }
+
+  if (!sellerProfile.data?.id || sellerProfile.data.status !== "active") {
+    return NextResponse.json(
+      {
+        error: "Seller account is not approved yet. Please wait for admin approval before submitting resources.",
+      },
+      { status: 403 },
+    );
+  }
+
   const insertResult = await supabaseAdmin
     .from("seller_resources")
     .insert({

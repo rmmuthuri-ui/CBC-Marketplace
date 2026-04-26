@@ -21,7 +21,9 @@ export default function SellPage() {
   const [resourceSubject, setResourceSubject] = useState("Mathematics");
   const [resourceGrade, setResourceGrade] = useState("");
   const [resourcePrice, setResourcePrice] = useState("100");
-  const [resourceFileUrl, setResourceFileUrl] = useState("");
+  const [resourceFile, setResourceFile] = useState<File | null>(null);
+  const [uploadedFileUrl, setUploadedFileUrl] = useState("");
+  const [uploadedFilePath, setUploadedFilePath] = useState("");
   const [message, setMessage] = useState("");
   const [isError, setIsError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -46,12 +48,46 @@ export default function SellPage() {
       });
 
       const applyData = (await applyResponse.json().catch(() => null)) as
-        | { error?: string }
+        | { error?: string; status?: string }
         | null;
       if (!applyResponse.ok) {
         setIsError(true);
         setMessage(applyData?.error ?? "Failed to submit seller application.");
         return;
+      }
+
+      if (applyData?.status !== "approved") {
+        setMessage(
+          "Seller application submitted. Your account is pending admin approval. You will be able to submit resources after approval.",
+        );
+        setIsError(false);
+        return;
+      }
+
+      let finalFileUrl = uploadedFileUrl;
+      if (resourceFile && !finalFileUrl) {
+        const uploadForm = new FormData();
+        uploadForm.set("sellerEmail", email);
+        uploadForm.set("title", resourceTitle);
+        uploadForm.set("file", resourceFile);
+
+        const uploadResponse = await fetch("/api/seller/upload", {
+          method: "POST",
+          body: uploadForm,
+        });
+        const uploadData = (await uploadResponse.json().catch(() => null)) as
+          | { error?: string; fileUrl?: string; filePath?: string }
+          | null;
+
+        if (!uploadResponse.ok || !uploadData?.fileUrl) {
+          setIsError(true);
+          setMessage(uploadData?.error ?? "File upload failed.");
+          return;
+        }
+
+        finalFileUrl = uploadData.fileUrl;
+        setUploadedFileUrl(uploadData.fileUrl);
+        setUploadedFilePath(uploadData.filePath ?? "");
       }
 
       const resourceResponse = await fetch("/api/seller/resources", {
@@ -65,7 +101,7 @@ export default function SellPage() {
           subject: resourceSubject,
           grade: resourceGrade,
           price: Number(resourcePrice),
-          fileUrl: resourceFileUrl || undefined,
+          fileUrl: finalFileUrl || undefined,
         }),
       });
 
@@ -177,12 +213,23 @@ export default function SellPage() {
             className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-green-500 focus:ring"
             required
           />
-          <input
-            value={resourceFileUrl}
-            onChange={(event) => setResourceFileUrl(event.target.value)}
-            placeholder="File URL (optional now)"
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-green-500 focus:ring"
-          />
+          <div className="rounded-md border border-slate-300 px-3 py-2 text-sm">
+            <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Resource file
+            </label>
+            <input
+              type="file"
+              onChange={(event) => setResourceFile(event.target.files?.[0] ?? null)}
+              className="w-full text-sm text-slate-700"
+              accept=".pdf,.doc,.docx,.ppt,.pptx,.zip"
+              required
+            />
+            {uploadedFileUrl ? (
+              <p className="mt-2 text-xs text-green-700">
+                Uploaded: <span className="font-medium">{uploadedFilePath || uploadedFileUrl}</span>
+              </p>
+            ) : null}
+          </div>
         </div>
 
         <textarea
