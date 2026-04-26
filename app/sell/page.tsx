@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import { MARKETPLACE_SUBJECTS } from "@/lib/subjects";
 
 function splitSubjects(raw: string): string[] {
@@ -11,6 +11,10 @@ function splitSubjects(raw: string): string[] {
 }
 
 export default function SellPage() {
+  const [sellerStatus, setSellerStatus] = useState<
+    "approved" | "pending" | "rejected" | "not_applied" | null
+  >(null);
+  const [isCheckingStatus, setIsCheckingStatus] = useState(false);
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -27,6 +31,62 @@ export default function SellPage() {
   const [message, setMessage] = useState("");
   const [isError, setIsError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const statusBanner = useMemo(() => {
+    if (!email.trim() || !sellerStatus) {
+      return null;
+    }
+
+    if (sellerStatus === "approved") {
+      return {
+        className: "border border-green-200 bg-green-50 text-green-700",
+        message: "Your seller status: Approved. You can upload and submit resources.",
+      };
+    }
+
+    if (sellerStatus === "pending") {
+      return {
+        className: "border border-amber-200 bg-amber-50 text-amber-700",
+        message: "Your seller status: Pending. Wait for admin approval before resource submission.",
+      };
+    }
+
+    if (sellerStatus === "rejected") {
+      return {
+        className: "border border-red-200 bg-red-50 text-red-700",
+        message: "Your seller status: Rejected. Update your details and reapply.",
+      };
+    }
+
+    return {
+      className: "border border-slate-200 bg-slate-50 text-slate-700",
+      message: "No seller application found for this email yet.",
+    };
+  }, [email, sellerStatus]);
+
+  async function checkSellerStatus() {
+    if (!email.trim()) {
+      setSellerStatus(null);
+      return;
+    }
+
+    setIsCheckingStatus(true);
+    try {
+      const statusResponse = await fetch(`/api/seller/status?email=${encodeURIComponent(email.trim())}`);
+      const statusData = (await statusResponse.json().catch(() => null)) as
+        | { error?: string; status?: "approved" | "pending" | "rejected" | "not_applied" }
+        | null;
+
+      if (!statusResponse.ok) {
+        setSellerStatus(null);
+        return;
+      }
+
+      setSellerStatus(statusData?.status ?? "not_applied");
+    } finally {
+      setIsCheckingStatus(false);
+    }
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -57,6 +117,7 @@ export default function SellPage() {
       }
 
       if (applyData?.status !== "approved") {
+        setSellerStatus((applyData?.status as "pending" | "rejected" | "not_applied" | undefined) ?? "pending");
         setMessage(
           "Seller application submitted. Your account is pending admin approval. You will be able to submit resources after approval.",
         );
@@ -118,6 +179,7 @@ export default function SellPage() {
         "Application and resource submitted. We will review your seller account and resource before publishing.",
       );
       setIsError(false);
+      setSellerStatus("approved");
     } catch {
       setIsError(true);
       setMessage("Could not submit at the moment. Please try again.");
@@ -147,7 +209,11 @@ export default function SellPage() {
           <input
             type="email"
             value={email}
-            onChange={(event) => setEmail(event.target.value)}
+            onChange={(event) => {
+              setEmail(event.target.value);
+              setSellerStatus(null);
+            }}
+            onBlur={checkSellerStatus}
             placeholder="Email"
             className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-green-500 focus:ring"
             required
@@ -165,6 +231,18 @@ export default function SellPage() {
             className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-green-500 focus:ring"
             required
           />
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={checkSellerStatus}
+            disabled={!email.trim() || isCheckingStatus}
+            className="rounded-md border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isCheckingStatus ? "Checking..." : "Check Seller Status"}
+          </button>
+          {statusBanner ? <p className={`rounded-md px-3 py-2 text-sm ${statusBanner.className}`}>{statusBanner.message}</p> : null}
         </div>
 
         <textarea
