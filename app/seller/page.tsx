@@ -1,6 +1,8 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
+import type { User } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabase";
 
 type SellerLedgerEntry = {
   id: string;
@@ -35,20 +37,36 @@ function formatKes(amount: number): string {
 }
 
 export default function SellerDashboardPage() {
-  const [email, setEmail] = useState("");
+  const [authEmail, setAuthEmail] = useState("");
+  const [user, setUser] = useState<User | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [isSendingLink, setIsSendingLink] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isError, setIsError] = useState(false);
   const [message, setMessage] = useState("");
   const [ledgerData, setLedgerData] = useState<SellerLedgerResponse | null>(null);
 
-  async function handleLookup(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function loadLedgerByEmail(email: string) {
     setIsLoading(true);
     setIsError(false);
     setMessage("");
 
     try {
-      const response = await fetch(`/api/seller/ledger?email=${encodeURIComponent(email.trim().toLowerCase())}`);
+      const sessionResult = await supabase.auth.getSession();
+      const accessToken = sessionResult.data.session?.access_token;
+      if (!accessToken) {
+        setLedgerData(null);
+        setIsError(true);
+        setMessage("Your session expired. Please sign in again.");
+        return;
+      }
+
+      const normalizedEmail = email.trim().toLowerCase();
+      const response = await fetch(`/api/seller/ledger?email=${encodeURIComponent(normalizedEmail)}`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
       const data = (await response.json().catch(() => null)) as SellerLedgerResponse | null;
 
       if (!response.ok) {
@@ -70,32 +88,124 @@ export default function SellerDashboardPage() {
     }
   }
 
+  useEffect(() => {
+    let mounted = true;
+
+    async function bootstrapAuth() {
+      const userResult = await supabase.auth.getUser();
+      if (mounted) {
+        setUser(userResult.data.user ?? null);
+        setIsAuthLoading(false);
+      }
+    }
+
+    bootstrapAuth();
+
+    const authSubscription = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) {
+        return;
+      }
+      setUser(session?.user ?? null);
+    });
+
+    return () => {
+      mounted = false;
+      authSubscription.data.subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    const userEmail = user?.email?.trim().toLowerCase();
+    if (!userEmail) {
+      setLedgerData(null);
+      return;
+    }
+    loadLedgerByEmail(userEmail);
+  }, [user?.email]);
+
+  async function handleSendMagicLink(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsSendingLink(true);
+    setIsError(false);
+    setMessage("");
+
+    try {
+      const normalizedEmail = authEmail.trim().toLowerCase();
+      const authResult = await supabase.auth.signInWithOtp({
+        email: normalizedEmail,
+        options: {
+          emailRedirectTo: `${window.location.origin}/seller`,
+        },
+      });
+
+      if (authResult.error) {
+        setIsError(true);
+        setMessage(authResult.error.message);
+        return;
+      }
+
+      setIsError(false);
+      setMessage("Magic sign-in link sent. Check your email, then open the link to continue.");
+    } catch {
+      setIsError(true);
+      setMessage("Could not send sign-in link right now. Please try again.");
+    } finally {
+      setIsSendingLink(false);
+    }
+  }
+
+  async function handleSignOut() {
+    await supabase.auth.signOut();
+    setLedgerData(null);
+    setMessage("Signed out successfully.");
+    setIsError(false);
+  }
+
   return (
     <section className="mx-auto max-w-5xl space-y-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
       <header className="space-y-2">
         <h1 className="text-3xl font-bold text-slate-900">Seller Earnings Dashboard</h1>
         <p className="text-sm leading-relaxed text-slate-600 sm:text-base">
-          Enter your seller email to view accrued earnings and your ledger history.
+          Sign in with your seller email to automatically view your accrued earnings and ledger history.
         </p>
       </header>
 
-      <form onSubmit={handleLookup} className="flex flex-col gap-3 sm:flex-row">
-        <input
-          type="email"
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-          placeholder="seller@email.com"
-          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-green-500 focus:ring"
-          required
-        />
-        <button
-          type="submit"
-          disabled={isLoading}
-          className="rounded-md bg-green-600 px-5 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {isLoading ? "Loading..." : "View Earnings"}
-        </button>
-      </form>
+      {isAuthLoading ? (
+        <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+          Checking your session...
+        </div>
+      ) : user?.email ? (
+        <div className="flex flex-col gap-3 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 sm:flex-row sm:items-center sm:justify-between">
+          <p>
+            Signed in as <span className="font-semibold">{user.email}</span>
+          </p>
+          <button
+            type="button"
+            onClick={handleSignOut}
+            className="rounded-md border border-green-300 bg-white px-3 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-100"
+          >
+            Sign out
+          </button>
+        </div>
+      ) : (
+        <form onSubmit={handleSendMagicLink} className="flex flex-col gap-3 sm:flex-row">
+          <input
+            type="email"
+            value={authEmail}
+            onChange={(event) => setAuthEmail(event.target.value)}
+            placeholder="seller@email.com"
+            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-green-500 focus:ring"
+            required
+          />
+          <button
+            type="submit"
+            disabled={isSendingLink}
+            className="rounded-md bg-green-600 px-5 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isSendingLink ? "Sending link..." : "Send Magic Link"}
+          </button>
+        </form>
+      )}
 
       {message ? (
         <p
@@ -107,7 +217,13 @@ export default function SellerDashboardPage() {
         </p>
       ) : null}
 
-      {ledgerData?.totals ? (
+      {user?.email && isLoading ? (
+        <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+          Loading your earnings...
+        </div>
+      ) : null}
+
+      {user?.email && ledgerData?.totals ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
             <p className="text-xs uppercase tracking-wide text-slate-500">Accrued</p>
@@ -128,7 +244,7 @@ export default function SellerDashboardPage() {
         </div>
       ) : null}
 
-      {ledgerData?.entries ? (
+      {user?.email && ledgerData?.entries ? (
         <div className="overflow-x-auto rounded-xl border border-slate-200">
           <table className="min-w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50">

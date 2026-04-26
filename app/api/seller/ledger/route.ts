@@ -22,6 +22,18 @@ function sumAmounts(rows: LedgerRow[], predicate?: (row: LedgerRow) => boolean):
 }
 
 export async function GET(request: Request) {
+  const authHeader = request.headers.get("authorization") ?? "";
+  const accessToken = authHeader.startsWith("Bearer ") ? authHeader.slice("Bearer ".length).trim() : "";
+  if (!accessToken) {
+    return NextResponse.json({ error: "Missing authorization token." }, { status: 401 });
+  }
+
+  const userResult = await supabaseAdmin.auth.getUser(accessToken);
+  const authEmail = userResult.data.user?.email?.trim().toLowerCase();
+  if (userResult.error || !authEmail) {
+    return NextResponse.json({ error: "Invalid authentication session." }, { status: 401 });
+  }
+
   const { searchParams } = new URL(request.url);
   const email = String(searchParams.get("email") ?? "")
     .trim()
@@ -29,6 +41,10 @@ export async function GET(request: Request) {
 
   if (!email) {
     return NextResponse.json({ error: "Email is required." }, { status: 400 });
+  }
+
+  if (email !== authEmail) {
+    return NextResponse.json({ error: "You can only view your own seller earnings." }, { status: 403 });
   }
 
   const profileLookup = await supabaseAdmin
