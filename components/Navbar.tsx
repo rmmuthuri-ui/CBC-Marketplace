@@ -20,6 +20,14 @@ export function Navbar() {
           >
             Seller Dashboard
           </Link>
+          <Link
+            href="/admin/login"
+            className="rounded-md border border-purple-300 px-3 py-1.5 text-purple-700 transition hover:bg-purple-50"
+            title="Admin area"
+            aria-label="Admin area"
+          >
+            Admin
+          </Link>
         </div>
       </nav>
     </header>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 type SellerApplication = {
@@ -31,29 +32,10 @@ type QueueResponse = {
   resources: SellerResource[];
 };
 
-type SellerPayout = {
-  id: string;
-  seller_email: string;
-  period_start: string;
-  period_end: string;
-  total_gross: number;
-  total_fee: number;
-  total_net: number;
-  status: string;
-  payment_reference: string | null;
-  paid_at: string | null;
-  created_at: string;
-};
-
 export default function AdminReviewPage() {
   const router = useRouter();
   const [applications, setApplications] = useState<SellerApplication[]>([]);
   const [resources, setResources] = useState<SellerResource[]>([]);
-  const [payouts, setPayouts] = useState<SellerPayout[]>([]);
-  const [periodStart, setPeriodStart] = useState("");
-  const [periodEnd, setPeriodEnd] = useState("");
-  const [payoutReference, setPayoutReference] = useState("");
-  const [selectedPayoutId, setSelectedPayoutId] = useState("");
   const [message, setMessage] = useState("");
   const [isError, setIsError] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -82,14 +64,6 @@ export default function AdminReviewPage() {
 
       setApplications((data as QueueResponse).applications ?? []);
       setResources((data as QueueResponse).resources ?? []);
-
-      const payoutsResponse = await fetch("/api/admin/payouts");
-      const payoutsData = (await payoutsResponse.json().catch(() => null)) as
-        | { payouts?: SellerPayout[]; error?: string }
-        | null;
-      if (payoutsResponse.ok) {
-        setPayouts(payoutsData?.payouts ?? []);
-      }
     } catch {
       setIsError(true);
       setMessage("Could not load review queue.");
@@ -106,7 +80,6 @@ export default function AdminReviewPage() {
     await fetch("/api/admin/session", { method: "DELETE" });
     setApplications([]);
     setResources([]);
-    setPayouts([]);
     router.push("/admin/login");
   }
 
@@ -148,63 +121,6 @@ export default function AdminReviewPage() {
     await loadQueue();
   }
 
-  async function createPayoutBatch() {
-    if (!periodStart || !periodEnd) {
-      setIsError(true);
-      setMessage("Choose both period start and period end.");
-      return;
-    }
-
-    const response = await fetch("/api/admin/payouts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "create_batch",
-        periodStart: new Date(periodStart).toISOString(),
-        periodEnd: new Date(`${periodEnd}T23:59:59.999Z`).toISOString(),
-      }),
-    });
-    const data = (await response.json().catch(() => null)) as { error?: string; created?: number } | null;
-    if (!response.ok) {
-      setIsError(true);
-      setMessage(data?.error ?? "Failed to create payout batch.");
-      return;
-    }
-
-    setIsError(false);
-    setMessage(`Created ${data?.created ?? 0} payout batch(es).`);
-    await loadQueue();
-  }
-
-  async function markPayoutPaid() {
-    if (!selectedPayoutId || !payoutReference.trim()) {
-      setIsError(true);
-      setMessage("Select payout and enter payment reference.");
-      return;
-    }
-
-    const response = await fetch("/api/admin/payouts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "mark_paid",
-        payoutId: selectedPayoutId,
-        paymentReference: payoutReference.trim(),
-      }),
-    });
-    const data = (await response.json().catch(() => null)) as { error?: string } | null;
-    if (!response.ok) {
-      setIsError(true);
-      setMessage(data?.error ?? "Failed to mark payout as paid.");
-      return;
-    }
-
-    setIsError(false);
-    setMessage("Payout marked as paid.");
-    setPayoutReference("");
-    await loadQueue();
-  }
-
   return (
     <section className="mx-auto max-w-5xl space-y-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
       <header className="space-y-2">
@@ -215,6 +131,12 @@ export default function AdminReviewPage() {
       </header>
 
       <div className="flex flex-col gap-3 sm:flex-row">
+        <Link
+          href="/admin/payouts"
+          className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          Go to Payouts
+        </Link>
         <button
           type="button"
           onClick={loadQueue}
@@ -322,108 +244,6 @@ export default function AdminReviewPage() {
             </article>
           ))
         )}
-      </div>
-
-      <div className="space-y-4">
-        <h2 className="text-xl font-semibold text-slate-900">Seller Payouts (Bi-weekly)</h2>
-        <div className="grid gap-3 sm:grid-cols-4">
-          <input
-            type="date"
-            value={periodStart}
-            onChange={(event) => setPeriodStart(event.target.value)}
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-blue-500 focus:ring"
-          />
-          <input
-            type="date"
-            value={periodEnd}
-            onChange={(event) => setPeriodEnd(event.target.value)}
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-blue-500 focus:ring"
-          />
-          <button
-            type="button"
-            onClick={createPayoutBatch}
-            className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
-          >
-            Create Payout Batch
-          </button>
-          <button
-            type="button"
-            onClick={loadQueue}
-            className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            Refresh Payouts
-          </button>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-3">
-          <select
-            value={selectedPayoutId}
-            onChange={(event) => setSelectedPayoutId(event.target.value)}
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-blue-500 focus:ring"
-          >
-            <option value="">Select ready payout</option>
-            {payouts
-              .filter((item) => item.status === "ready")
-              .map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.seller_email} | {new Date(item.period_start).toLocaleDateString()} -{" "}
-                  {new Date(item.period_end).toLocaleDateString()} | KES {item.total_net}
-                </option>
-              ))}
-          </select>
-          <input
-            value={payoutReference}
-            onChange={(event) => setPayoutReference(event.target.value)}
-            placeholder="Payment reference"
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-blue-500 focus:ring"
-          />
-          <button
-            type="button"
-            onClick={markPayoutPaid}
-            className="rounded-md bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700"
-          >
-            Mark Paid
-          </button>
-        </div>
-
-        <div className="overflow-x-auto rounded-xl border border-slate-200">
-          <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50">
-              <tr>
-                <th className="px-4 py-3 text-left font-semibold text-slate-700">Seller</th>
-                <th className="px-4 py-3 text-left font-semibold text-slate-700">Period</th>
-                <th className="px-4 py-3 text-left font-semibold text-slate-700">Gross</th>
-                <th className="px-4 py-3 text-left font-semibold text-slate-700">Fee</th>
-                <th className="px-4 py-3 text-left font-semibold text-slate-700">Payable</th>
-                <th className="px-4 py-3 text-left font-semibold text-slate-700">Status</th>
-                <th className="px-4 py-3 text-left font-semibold text-slate-700">Reference</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {payouts.length === 0 ? (
-                <tr>
-                  <td className="px-4 py-4 text-slate-500" colSpan={7}>
-                    No payouts yet.
-                  </td>
-                </tr>
-              ) : (
-                payouts.map((payout) => (
-                  <tr key={payout.id}>
-                    <td className="px-4 py-3 text-slate-700">{payout.seller_email}</td>
-                    <td className="px-4 py-3 text-slate-700">
-                      {new Date(payout.period_start).toLocaleDateString()} - {new Date(payout.period_end).toLocaleDateString()}
-                    </td>
-                    <td className="px-4 py-3 text-slate-700">KES {payout.total_gross}</td>
-                    <td className="px-4 py-3 text-slate-700">KES {payout.total_fee}</td>
-                    <td className="px-4 py-3 font-semibold text-slate-900">KES {payout.total_net}</td>
-                    <td className="px-4 py-3 text-slate-700">{payout.status}</td>
-                    <td className="px-4 py-3 text-slate-700">{payout.payment_reference ?? "-"}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
       </div>
     </section>
   );
