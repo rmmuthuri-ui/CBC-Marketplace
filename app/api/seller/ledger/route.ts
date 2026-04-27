@@ -82,6 +82,15 @@ export async function GET(request: Request) {
   const grossSalesTotal = sumAmounts(rows, "gross_amount");
   const websiteFeeTotal = sumAmounts(rows, "commission_amount");
 
+  const lastPayout = await supabaseAdmin
+    .from("seller_payouts")
+    .select("id, paid_at, payment_reference")
+    .eq("seller_email", email)
+    .eq("status", "paid")
+    .order("paid_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
   return NextResponse.json({
     seller: {
       email,
@@ -95,6 +104,10 @@ export async function GET(request: Request) {
       grossSales: grossSalesTotal,
       websiteFee: websiteFeeTotal,
       entries: rows.length,
+    },
+    payout: {
+      lastPaidAt: lastPayout.data?.paid_at ?? null,
+      lastReference: lastPayout.data?.payment_reference ?? null,
     },
     entries: rows,
   });

@@ -31,6 +31,10 @@ type SellerLedgerResponse = {
     websiteFee: number;
     entries: number;
   };
+  payout?: {
+    lastPaidAt?: string | null;
+    lastReference?: string | null;
+  };
   entries?: SellerLedgerEntry[];
   error?: string;
 };
@@ -409,6 +413,22 @@ export default function SellerDashboardPage() {
             <p className="text-xs uppercase tracking-wide text-slate-500">Lifetime Payable</p>
             <p className="mt-1 text-lg font-semibold text-slate-900">{formatKes(ledgerData.totals.lifetimeNet)}</p>
           </div>
+        </div>
+      ) : null}
+
+      {user?.email && ledgerData?.payout ? (
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <p className="text-sm font-semibold text-slate-900">Bi-weekly payout tracking</p>
+          <p className="mt-1 text-sm text-slate-600">
+            Current payable for next payout: <span className="font-medium text-slate-900">{formatKes(ledgerData.totals?.accrued ?? 0)}</span>
+          </p>
+          <p className="mt-1 text-sm text-slate-600">
+            Last payout:{" "}
+            <span className="font-medium text-slate-900">
+              {ledgerData.payout.lastPaidAt ? new Date(ledgerData.payout.lastPaidAt).toLocaleString() : "Not paid yet"}
+            </span>
+            {ledgerData.payout.lastReference ? ` (Ref: ${ledgerData.payout.lastReference})` : ""}
+          </p>
         </div>
       ) : null}
 
