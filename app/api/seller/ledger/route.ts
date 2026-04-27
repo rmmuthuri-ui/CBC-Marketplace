@@ -16,9 +16,13 @@ type LedgerRow = {
   net_amount: number;
 };
 
-function sumAmounts(rows: LedgerRow[], predicate?: (row: LedgerRow) => boolean): number {
+function sumAmounts(
+  rows: LedgerRow[],
+  amountField: "gross_amount" | "commission_amount" | "net_amount",
+  predicate?: (row: LedgerRow) => boolean,
+): number {
   const filtered = predicate ? rows.filter(predicate) : rows;
-  const total = filtered.reduce((acc, row) => acc + Number(row.net_amount || 0), 0);
+  const total = filtered.reduce((acc, row) => acc + Number(row[amountField] || 0), 0);
   return Math.round(total * 100) / 100;
 }
 
@@ -72,9 +76,11 @@ export async function GET(request: Request) {
   }
 
   const rows = (ledgerLookup.data ?? []) as LedgerRow[];
-  const accruedTotal = sumAmounts(rows, (row) => row.status === "accrued");
-  const paidOutTotal = sumAmounts(rows, (row) => row.status === "paid_out");
-  const lifetimeNetTotal = sumAmounts(rows);
+  const accruedTotal = sumAmounts(rows, "net_amount", (row) => row.status === "accrued");
+  const paidOutTotal = sumAmounts(rows, "net_amount", (row) => row.status === "paid_out");
+  const lifetimeNetTotal = sumAmounts(rows, "net_amount");
+  const grossSalesTotal = sumAmounts(rows, "gross_amount");
+  const websiteFeeTotal = sumAmounts(rows, "commission_amount");
 
   return NextResponse.json({
     seller: {
@@ -86,6 +92,8 @@ export async function GET(request: Request) {
       accrued: accruedTotal,
       paidOut: paidOutTotal,
       lifetimeNet: lifetimeNetTotal,
+      grossSales: grossSalesTotal,
+      websiteFee: websiteFeeTotal,
       entries: rows.length,
     },
     entries: rows,

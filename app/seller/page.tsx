@@ -27,6 +27,8 @@ type SellerLedgerResponse = {
     accrued: number;
     paidOut: number;
     lifetimeNet: number;
+    grossSales: number;
+    websiteFee: number;
     entries: number;
   };
   entries?: SellerLedgerEntry[];
@@ -386,22 +388,26 @@ export default function SellerDashboardPage() {
       ) : null}
 
       {user?.email && ledgerData?.totals ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-            <p className="text-xs uppercase tracking-wide text-slate-500">Accrued</p>
+            <p className="text-xs uppercase tracking-wide text-slate-500">Payable This Cycle</p>
             <p className="mt-1 text-lg font-semibold text-slate-900">{formatKes(ledgerData.totals.accrued)}</p>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-xs uppercase tracking-wide text-slate-500">Gross Sales</p>
+            <p className="mt-1 text-lg font-semibold text-slate-900">{formatKes(ledgerData.totals.grossSales)}</p>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-xs uppercase tracking-wide text-slate-500">Website Fee (30%)</p>
+            <p className="mt-1 text-lg font-semibold text-slate-900">{formatKes(ledgerData.totals.websiteFee)}</p>
           </div>
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
             <p className="text-xs uppercase tracking-wide text-slate-500">Paid Out</p>
             <p className="mt-1 text-lg font-semibold text-slate-900">{formatKes(ledgerData.totals.paidOut)}</p>
           </div>
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-            <p className="text-xs uppercase tracking-wide text-slate-500">Lifetime Net</p>
+            <p className="text-xs uppercase tracking-wide text-slate-500">Lifetime Payable</p>
             <p className="mt-1 text-lg font-semibold text-slate-900">{formatKes(ledgerData.totals.lifetimeNet)}</p>
-          </div>
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-            <p className="text-xs uppercase tracking-wide text-slate-500">Entries</p>
-            <p className="mt-1 text-lg font-semibold text-slate-900">{ledgerData.totals.entries}</p>
           </div>
         </div>
       ) : null}

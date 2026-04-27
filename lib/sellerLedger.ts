@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
-const SELLER_COMMISSION_RATE = 0;
+const WEBSITE_FEE_RATE = 0.3;
 
 type PaymentRow = {
   id: string;
@@ -60,7 +60,7 @@ export async function ensureSellerLedgerEntryForPayment(paymentId: string): Prom
 
   const sellerResource = sellerResourceLookup.data as SellerResourceRow;
   const grossAmount = Number(payment.amount) || 0;
-  const commissionAmount = roundCurrency(grossAmount * SELLER_COMMISSION_RATE);
+  const commissionAmount = roundCurrency(grossAmount * WEBSITE_FEE_RATE);
   const netAmount = roundCurrency(grossAmount - commissionAmount);
 
   await supabaseAdmin.from("seller_ledger").insert({
