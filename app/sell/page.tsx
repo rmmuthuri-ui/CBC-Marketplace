@@ -290,10 +290,10 @@ export default function SellPage() {
         setMessage(authResult.error.message);
         return;
       }
-      setMessage("Magic sign-in link sent. Check your email, then open the link.");
+      setMessage("Verification email sent. Check your inbox and click login.");
     } catch {
       setIsError(true);
-      setMessage("Could not send sign-in link right now. Please try again.");
+      setMessage("Could not send verification email right now. Please try again.");
     } finally {
       setIsSendingLink(false);
     }
@@ -334,23 +334,29 @@ export default function SellPage() {
           </button>
         </div>
       ) : (
-        <form onSubmit={handleSendMagicLink} className="flex flex-col gap-3 sm:flex-row">
-          <input
-            type="email"
-            value={authEmail}
-            onChange={(event) => setAuthEmail(event.target.value)}
-            placeholder="seller@email.com"
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-green-500 focus:ring"
-            required
-          />
-          <button
-            type="submit"
-            disabled={isSendingLink}
-            className="rounded-md bg-green-600 px-5 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isSendingLink ? "Sending link..." : "Send Magic Link"}
-          </button>
-        </form>
+        <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <p className="text-sm text-slate-700">
+            First time becoming a seller under CBC/CBE dashboard:
+            enter your email, click verify, check your email, then click login.
+          </p>
+          <form onSubmit={handleSendMagicLink} className="flex flex-col gap-3 sm:flex-row">
+            <input
+              type="email"
+              value={authEmail}
+              onChange={(event) => setAuthEmail(event.target.value)}
+              placeholder="seller@email.com"
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-green-500 focus:ring"
+              required
+            />
+            <button
+              type="submit"
+              disabled={isSendingLink}
+              className="rounded-md bg-green-600 px-5 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isSendingLink ? "Sending verification..." : "Verify Email Address"}
+            </button>
+          </form>
+        </div>
       )}
 
       {sellerStatus === "approved" ? (
