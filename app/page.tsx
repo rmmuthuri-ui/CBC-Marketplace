@@ -64,26 +64,47 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Instant downloads */}
+      {/* Platform guide */}
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
         <h2 className="text-2xl font-bold text-slate-900 sm:text-3xl">
-          Instant Access to Resources
+          How to Use This Platform
         </h2>
-        <p className="mt-4 max-w-3xl text-sm leading-relaxed text-slate-600 sm:text-base">
-          Get immediate access to your purchased resources anytime, anywhere. No waiting, no delays —
-          just download and start using in your classroom.
-        </p>
-      </section>
-
-      {/* CBC/CBE alignment */}
-      <section className="rounded-2xl border border-blue-100 bg-gradient-to-br from-white to-blue-50/60 p-6 shadow-sm sm:p-8">
-        <h2 className="text-2xl font-bold text-slate-900 sm:text-3xl">
-          Fully Aligned to CBC/CBE
-        </h2>
-        <p className="mt-4 max-w-3xl text-sm leading-relaxed text-slate-600 sm:text-base">
-          Our materials are designed to support competency-based learning, helping learners develop
-          skills, values, and real-world understanding as required by the CBC/CBE framework.
-        </p>
+        <div className="mt-5 grid gap-4 sm:grid-cols-2">
+          <article className="rounded-xl border border-slate-100 bg-slate-50/80 p-5">
+            <h3 className="flex items-center gap-2 text-base font-semibold text-blue-800">
+              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-700">B</span>
+              For Buyers
+            </h3>
+            <ol className="mt-3 space-y-2 text-sm leading-relaxed text-slate-600">
+              <li>
+                <span className="font-semibold text-slate-700">1.</span> Browse subjects and open the resource you need.
+              </li>
+              <li>
+                <span className="font-semibold text-slate-700">2.</span> Enter your phone and complete M-PESA payment.
+              </li>
+              <li>
+                <span className="font-semibold text-slate-700">3.</span> Click check status, then download instantly.
+              </li>
+            </ol>
+          </article>
+          <article className="rounded-xl border border-slate-100 bg-slate-50/80 p-5">
+            <h3 className="flex items-center gap-2 text-base font-semibold text-blue-800">
+              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-green-100 text-xs font-bold text-green-700">S</span>
+              For Sellers
+            </h3>
+            <ol className="mt-3 space-y-2 text-sm leading-relaxed text-slate-600">
+              <li>
+                <span className="font-semibold text-slate-700">1.</span> Open Become a Seller and verify your email.
+              </li>
+              <li>
+                <span className="font-semibold text-slate-700">2.</span> Submit your first application and first resource.
+              </li>
+              <li>
+                <span className="font-semibold text-slate-700">3.</span> After approval, use Seller Dashboard for uploads and earnings.
+              </li>
+            </ol>
+          </article>
+        </div>
       </section>
 
       {/* Categories */}
