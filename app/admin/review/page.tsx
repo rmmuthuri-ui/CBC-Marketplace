@@ -58,6 +58,19 @@ export default function AdminReviewPage() {
     window.localStorage.setItem("admin_review_key", adminKey);
 
     try {
+      const sessionResponse = await fetch("/api/admin/session", {
+        method: "POST",
+        headers: {
+          "x-admin-key": adminKey,
+        },
+      });
+      const sessionData = (await sessionResponse.json().catch(() => null)) as { error?: string } | null;
+      if (!sessionResponse.ok) {
+        setIsError(true);
+        setMessage(sessionData?.error ?? "Admin verification failed.");
+        return;
+      }
+
       const response = await fetch("/api/admin/review", {
         headers: {
           "x-admin-key": adminKey,
@@ -82,6 +95,16 @@ export default function AdminReviewPage() {
     } finally {
       setIsLoading(false);
     }
+  }
+
+  async function clearAdminSession() {
+    await fetch("/api/admin/session", { method: "DELETE" });
+    window.localStorage.removeItem("admin_review_key");
+    setAdminKey("");
+    setApplications([]);
+    setResources([]);
+    setMessage("Admin session cleared.");
+    setIsError(false);
   }
 
   async function reviewApplication(id: string, action: "approve" | "reject") {
@@ -148,6 +171,13 @@ export default function AdminReviewPage() {
           className="rounded-md bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isLoading ? "Loading..." : "Load Queue"}
+        </button>
+        <button
+          type="button"
+          onClick={clearAdminSession}
+          className="rounded-md border border-slate-300 px-5 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          Clear Admin Session
         </button>
       </div>
 

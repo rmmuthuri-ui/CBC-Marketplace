@@ -20,12 +20,6 @@ export function Navbar() {
           >
             Seller Dashboard
           </Link>
-          <Link
-            href="/admin/review"
-            className="rounded-md border border-purple-300 px-3 py-1.5 text-purple-700 transition hover:bg-purple-50"
-          >
-            Admin Review
-          </Link>
         </div>
       </nav>
     </header>

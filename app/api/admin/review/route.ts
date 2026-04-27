@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { getAdminReviewKey, isValidAdminReviewKey } from "@/lib/adminReview";
+import { getAdminReviewKey, getAdminKeyFromRequest, isValidAdminReviewKey } from "@/lib/adminReview";
 
 export const runtime = "nodejs";
 
 function requireAdminKey(request: Request): string | null {
-  const provided = request.headers.get("x-admin-key");
+  const provided = getAdminKeyFromRequest(request);
   const expected = getAdminReviewKey();
   return isValidAdminReviewKey(provided, expected) ? null : "Unauthorized";
 }
