@@ -133,13 +133,29 @@ export default function AdminPayoutsPage() {
         </p>
       </header>
 
-      <div className="flex flex-col gap-3 sm:flex-row">
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2 text-sm">
         <Link
           href="/admin/review"
-          className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          className="rounded-md border border-slate-300 bg-white px-3 py-1.5 font-semibold text-slate-700 hover:bg-slate-50"
         >
-          Go to Review Queue
+          Review
         </Link>
+        <Link
+          href="/admin/payouts"
+          className="rounded-md bg-blue-600 px-3 py-1.5 font-semibold text-white"
+        >
+          Payouts
+        </Link>
+        <button
+          type="button"
+          onClick={clearAdminSession}
+          className="rounded-md border border-slate-300 bg-white px-3 py-1.5 font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          Logout
+        </button>
+      </div>
+
+      <div className="flex flex-col gap-3 sm:flex-row">
         <button
           type="button"
           onClick={loadPayouts}
@@ -147,13 +163,6 @@ export default function AdminPayoutsPage() {
           className="rounded-md bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isLoading ? "Loading..." : "Refresh Payouts"}
-        </button>
-        <button
-          type="button"
-          onClick={clearAdminSession}
-          className="rounded-md border border-slate-300 px-5 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-        >
-          Clear Admin Session
         </button>
       </div>
 
