@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 type SellerApplication = {
   id: string;
@@ -31,57 +32,30 @@ type QueueResponse = {
 };
 
 export default function AdminReviewPage() {
-  const [adminKey, setAdminKey] = useState("");
+  const router = useRouter();
   const [applications, setApplications] = useState<SellerApplication[]>([]);
   const [resources, setResources] = useState<SellerResource[]>([]);
   const [message, setMessage] = useState("");
   const [isError, setIsError] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  useEffect(() => {
-    const saved = window.localStorage.getItem("admin_review_key") || "";
-    if (saved) {
-      setAdminKey(saved);
-    }
-  }, []);
-
-  async function loadQueue() {
-    if (!adminKey.trim()) {
-      setIsError(true);
-      setMessage("Enter admin key first.");
-      return;
-    }
-
+  const loadQueue = useCallback(async () => {
     setIsLoading(true);
     setMessage("");
     setIsError(false);
-    window.localStorage.setItem("admin_review_key", adminKey);
 
     try {
-      const sessionResponse = await fetch("/api/admin/session", {
-        method: "POST",
-        headers: {
-          "x-admin-key": adminKey,
-        },
-      });
-      const sessionData = (await sessionResponse.json().catch(() => null)) as { error?: string } | null;
-      if (!sessionResponse.ok) {
-        setIsError(true);
-        setMessage(sessionData?.error ?? "Admin verification failed.");
-        return;
-      }
-
-      const response = await fetch("/api/admin/review", {
-        headers: {
-          "x-admin-key": adminKey,
-        },
-      });
+      const response = await fetch("/api/admin/review");
       const data = (await response.json().catch(() => null)) as
         | QueueResponse
         | { error?: string }
         | null;
 
       if (!response.ok) {
+        if (response.status === 401) {
+          router.push("/admin/login?next=/admin/review");
+          return;
+        }
         setIsError(true);
         setMessage((data as { error?: string } | null)?.error ?? "Failed to load review queue.");
         return;
@@ -95,16 +69,17 @@ export default function AdminReviewPage() {
     } finally {
       setIsLoading(false);
     }
-  }
+  }, [router]);
+
+  useEffect(() => {
+    void loadQueue();
+  }, [loadQueue]);
 
   async function clearAdminSession() {
     await fetch("/api/admin/session", { method: "DELETE" });
-    window.localStorage.removeItem("admin_review_key");
-    setAdminKey("");
     setApplications([]);
     setResources([]);
-    setMessage("Admin session cleared.");
-    setIsError(false);
+    router.push("/admin/login");
   }
 
   async function reviewApplication(id: string, action: "approve" | "reject") {
@@ -112,7 +87,6 @@ export default function AdminReviewPage() {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-admin-key": adminKey,
       },
       body: JSON.stringify({ applicationId: id, action }),
     });
@@ -132,7 +106,6 @@ export default function AdminReviewPage() {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-admin-key": adminKey,
       },
       body: JSON.stringify({ resourceId: id, action }),
     });
@@ -157,13 +130,6 @@ export default function AdminReviewPage() {
       </header>
 
       <div className="flex flex-col gap-3 sm:flex-row">
-        <input
-          type="password"
-          placeholder="ADMIN_REVIEW_KEY"
-          value={adminKey}
-          onChange={(event) => setAdminKey(event.target.value)}
-          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-green-500 focus:ring"
-        />
         <button
           type="button"
           onClick={loadQueue}
