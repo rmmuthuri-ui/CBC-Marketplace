@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import type { User } from "@supabase/supabase-js";
+import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { MARKETPLACE_SUBJECTS } from "@/lib/subjects";
 
@@ -311,7 +312,7 @@ export default function SellPage() {
       <header className="space-y-2">
         <h1 className="text-3xl font-bold text-slate-900">Become a Seller</h1>
         <p className="text-sm text-slate-600 sm:text-base">
-          Start Phase 1 onboarding: submit your seller application and first resource for review.
+          First-time onboarding: submit your seller application and first resource for review.
         </p>
       </header>
 
@@ -352,6 +353,19 @@ export default function SellPage() {
         </form>
       )}
 
+      {sellerStatus === "approved" ? (
+        <div className="space-y-3 rounded-xl border border-blue-200 bg-blue-50 p-4">
+          <p className="text-sm text-blue-800">
+            Your seller account is already approved. Use your seller dashboard for new uploads and resource management.
+          </p>
+          <Link
+            href="/seller"
+            className="inline-flex rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+          >
+            Go to Seller Dashboard
+          </Link>
+        </div>
+      ) : (
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="grid gap-4 sm:grid-cols-2">
           <input
@@ -490,6 +504,7 @@ export default function SellPage() {
           </p>
         ) : null}
       </form>
+      )}
     </section>
   );
 }
