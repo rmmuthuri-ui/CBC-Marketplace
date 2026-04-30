@@ -37,16 +37,6 @@ export async function ensureSellerLedgerEntryForPayment(paymentId: string): Prom
     return;
   }
 
-  const existingLedger = await supabaseAdmin
-    .from("seller_ledger")
-    .select("id")
-    .eq("source_payment_id", payment.id)
-    .maybeSingle();
-
-  if (existingLedger.data) {
-    return;
-  }
-
   const sellerResourceLookup = await supabaseAdmin
     .from("seller_resources")
     .select("seller_email")
@@ -63,14 +53,22 @@ export async function ensureSellerLedgerEntryForPayment(paymentId: string): Prom
   const commissionAmount = roundCurrency(grossAmount * WEBSITE_FEE_RATE);
   const netAmount = roundCurrency(grossAmount - commissionAmount);
 
-  await supabaseAdmin.from("seller_ledger").insert({
-    seller_email: sellerResource.seller_email,
-    source_payment_id: payment.id,
-    resource_id: payment.resource_id,
-    gross_amount: grossAmount,
-    commission_amount: commissionAmount,
-    net_amount: netAmount,
-    entry_type: "sale",
-    status: "accrued",
-  });
+  await supabaseAdmin
+    .from("seller_ledger")
+    .upsert(
+      {
+        seller_email: sellerResource.seller_email,
+        source_payment_id: payment.id,
+        resource_id: payment.resource_id,
+        gross_amount: grossAmount,
+        commission_amount: commissionAmount,
+        net_amount: netAmount,
+        entry_type: "sale",
+        status: "accrued",
+      },
+      {
+        onConflict: "source_payment_id",
+        ignoreDuplicates: true,
+      },
+    );
 }
